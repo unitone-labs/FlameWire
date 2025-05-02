@@ -1,4 +1,4 @@
-# SN97 - Flamewire: Decentralized Infrastructure
+# SN97 - FlameWire: Decentralized Infrastructure
 
 **Flamewire** is a specialized **subnet within the Bittensor network** designed to provide **decentralized RPC, node, and API services** for multiple blockchains.
 
