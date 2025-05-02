@@ -1,6 +1,8 @@
 ![Flamewire Cover](./flamewire-cover.png)
 # SN97 - FlameWire: Decentralized Infrastructure
 
+![Subnet 97 Badge](https://img.shields.io/badge/Subnet-97-blue)
+
 **FlameWire** is a specialized **subnet within the Bittensor network** designed to provide **decentralized RPC, node, and API services** for multiple blockchains.
 
 Like Alchemy, Ankr, or other infrastructure providers—but fully decentralized FlameWire democratizes blockchain infrastructure access, beginning with **Ethereum**, **Bittensor**, and **Solana**, and expanding further.
@@ -47,7 +49,7 @@ Coordinates and manages network activity:
 
 ## Economic Model
 
-- **Stake-Based Free-Tier Access**: Users get free access based on staked Alpha Tokens  
+- **Stake-Based Free-Tier Access**: Users get free access based on staked Alpha Tokens 
 - **Pay-as-you-go**: Developers pay based on resource consumption  
 - **Circular Tokenomics**: Payments are recycled into subnet liquidity  
 - **Performance-Based Rewards**: High-quality service providers earn more  
@@ -63,7 +65,7 @@ Coordinates and manages network activity:
 
 ### User Access
 
-- Developers and users connect via Flamewire APIs  
+- Developers and users connect via FlameWire APIs  
 - Requests are routed intelligently based on region, load, and performance  
 
 ### Evaluation and Rewards
