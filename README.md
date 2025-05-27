@@ -9,10 +9,22 @@ Like Alchemy, Ankr, or other infrastructure providers—but fully decentralized 
 
 ---
 
+## Quick Navigation
+
+| Section | Description |
+|---------|-------------|
+| [Key Components](#key-components) | Overview of Miners, Validators, and Subnet Owner roles |
+| [Economic Model](#economic-model) | Tokenomics and reward structure |
+| [Setup for Miners and Validators](#setup-for-miners-and-validators) | Registration and setup instructions |
+| [Competitive Advantages](#competitive-advantages) | Key benefits of FlameWire |
+| [Development Directions](#development-directions) | Future roadmap and planned features |
+
+---
+
 ## Overview
 
 - **Decentralized infrastructure** for RPC and API services  
-- **Multi-chain support**: Ethereum, Bittensor, Solana (and more coming)  
+- **Multi-chain support**: Ethereum, Bittensor, SUI (and more coming)  
 - **Scalable, secure, and resilient** architecture  
 - Designed for developers, validators, and network operators
 
@@ -23,7 +35,7 @@ Like Alchemy, Ankr, or other infrastructure providers—but fully decentralized 
 ### Miners  
 Provide the underlying infrastructure:
 
-- **Multi-Chain Node Operators**: Serve Ethereum, Bittensor, Solana, etc.  
+- **Multi-Chain Node Operators**: Serve Ethereum, Bittensor, SUI, etc.  
 - **Global Coverage**: Deploy nodes across regions for low-latency access  
 - **Redundant Infrastructure**: Ensures continuous service availability  
 - **Secure Communication**: Verified via cryptographic signatures  
@@ -56,17 +68,136 @@ Coordinates and manages network activity:
 
 ---
 
-## Workflow
+## Setup for Miners and Validators
 
-### Registration and Configuration
+### Registration 
 
-- Miners register nodes for supported blockchains  
-- Validators begin monitoring uptime and performance  
+To register as a miner or validator on FlameWire subnet, follow these steps:
 
-### User Access
+1. **Install Bittensor**
+   ```bash
+   pip install bittensor-cli
+   ```
 
-- Developers and users connect via FlameWire APIs  
-- Requests are routed intelligently based on region, load, and performance  
+2. **Create a Wallet**
+   ```bash
+   btcli wallet new --wallet.name flamewire_wallet
+   ```
+
+3. **Register Neuron**
+   ```bash
+   btcli subnet register --wallet.name flamewire_wallet --wallet.hotkey default --subtensor.network finney --subnet.netuid 97
+   ```
+
+4. **Verify Registration**
+   ```bash
+   btcli subnet list --subtensor.network finney --subnet.netuid 97
+   ```
+### Miners 
+
+After registering your neuron, miners need to set up and run the gateway service:
+
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/unitone-labs/FlameWire
+   cd FlameWire
+   ```
+
+2. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   pip install -e .
+   ```
+
+
+3. **Register Gateway**
+   ```bash
+   python3 gateway_register.py
+   ```
+    Enter wallets path (default: ~/.bittensor/wallets): 
+    Enter wallet name (default: default): 
+    Enter hotkey name (default: default): 
+    Enter network (default: finney):
+    Enter Bittensor node URL:
+
+
+The gateway registration process will:
+- Register your services with the flamewire gateway
+- Begin serving RPC/API requests
+- Start earning rewards based on performance
+
+Monitor your miner's performance using:
+```bash
+btcli subnet metagraph --subtensor.network finney --subnet.netuid 97
+```
+
+### Validators
+
+To run a validator on FlameWire subnet, follow these steps:
+
+1. **Install Dependencies**
+   ```bash
+   # Install Python dependencies
+   pip install -r requirements.txt
+   pip install -e .
+
+   # Install PM2 for process management
+   npm install -g pm2
+   ```
+
+2. **Get Validator API Key**
+   - Join our Discord: https://discord.flamewire.io
+   - Request a validator API key from the team
+   - This key is required for validator operations
+
+
+3. **Start Validator**
+   Using PM2 for process management:
+   ```bash
+   # Start validator with PM2
+   pm2 start neurons/validator.py --name flamewire-validator --interpreter python3 -- \
+     --wallet.name YOUR_WALLET_NAME \
+     --wallet.hotkey YOUR_WALLET_HOTKEY \
+     --netuid 97 \
+     --subtensor.network finney \
+     --logging.debug \
+     --api_key YOUR_API_KEY \
+     --rpc_url YOUR_RPC_URL
+
+   # Monitor validator
+   pm2 monit
+
+   # View logs
+   pm2 logs flamewire-validator
+
+   # Restart if needed
+   pm2 restart flamewire-validator
+   ```
+
+5. **Validator Management Commands**
+   ```bash
+   # Check validator status
+   pm2 status
+
+   # Stop validator
+   pm2 stop flamewire-validator
+
+   # Delete validator from PM2
+   pm2 delete flamewire-validator
+
+   # Save PM2 process list
+   pm2 save
+
+   # Setup PM2 to start on system boot
+   pm2 startup
+   ```
+
+Important Notes:
+- The validator API key is required and can be obtained from our Discord
+- RPC_URL can be your own local archive node or any third-party provider
+- Ensure your system has sufficient resources (CPU, RAM, network)
+- Monitor your validator's performance regularly
+- Keep your API key and wallet credentials secure
 
 ### Evaluation and Rewards
 
