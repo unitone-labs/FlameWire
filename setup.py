@@ -31,14 +31,11 @@ def read_requirements(path):
         processed_requirements = []
 
         for req in requirements:
-            # For git or other VCS links
             if req.startswith("git+") or "@" in req:
                 pkg_name = re.search(r"(#egg=)([\w\-_]+)", req)
                 if pkg_name:
                     processed_requirements.append(pkg_name.group(2))
                 else:
-                    # You may decide to raise an exception here,
-                    # if you want to ensure every VCS link has an #egg=<package_name> at the end
                     continue
             else:
                 processed_requirements.append(req)
@@ -51,13 +48,11 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, "README.md"), encoding="utf-8") as f:
     long_description = f.read()
 
-# loading version from setup.py
-with codecs.open(
-    os.path.join(here, "flamewire/__init__.py"), encoding="utf-8"
-) as init_file:
-    version_match = re.search(
-        r"^__version__ = ['\"]([^'\"]*)['\"]", init_file.read(), re.M
-    )
+with codecs.open(os.path.join(here, "flamewire", "__init__.py"), encoding="utf-8") as init_file:
+    init_content = init_file.read()
+    version_match = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", init_content)
+    if not version_match:
+        raise RuntimeError("Unable to find __version__ in flamewire/__init__.py")
     version_string = version_match.group(1)
 
 setup(
@@ -74,5 +69,4 @@ setup(
     license="MIT",
     python_requires=">=3.8",
     install_requires=requirements,
-
 )
