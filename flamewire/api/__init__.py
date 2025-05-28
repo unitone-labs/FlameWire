@@ -19,7 +19,14 @@ def gateway_rpc_call(
     payload = {"method": method, "params": params, "id": 1, "miners": [miner]}
     url = f"{gateway_url.rstrip('/')}/v1/validators/bittensor"
     resp = session.post(url, json=payload, timeout=timeout, headers={"x-api-key": api_key})
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError:
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:500]
+        raise RuntimeError(f"{detail}") from None
     data = resp.json()
     if not isinstance(data, list) or not data:
         raise RuntimeError(f"Empty gateway response {_shorten(data)}")
@@ -32,10 +39,27 @@ def gateway_rpc_call(
 def post_node_results(gateway_url: str, api_key: str, nodes: List[Dict[str, Any]]) -> None:
     url = f"{gateway_url.rstrip('/')}/v1/validators/nodes"
     resp = requests.post(url, json={"nodes": nodes}, headers={"x-api-key": api_key}, timeout=10)
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError:
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:500]
+        raise RuntimeError(f"{detail}") from None
 
 
 def register_miner(register_url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    resp = requests.post(register_url, json=payload)
-    resp.raise_for_status()
+    resp = requests.post(register_url, json=payload, timeout=10)
+
+    try:
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:500]
+
+        raise RuntimeError(f"{detail}") from None
+
     return resp.json()
