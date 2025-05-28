@@ -19,9 +19,9 @@
 
 # (UnitOne Labs): Alexander
 # Define the version of the template module.
-_version_ = "0.1.2"
-version_split = _version_.split(".")
-_spec_version_ = (
+__version__ = "0.1.2"
+version_split = __version__.split(".")
+__spec_version__ = (
     (1000 * int(version_split[0]))
     + (10 * int(version_split[1]))
     + (1 * int(version_split[2]))
