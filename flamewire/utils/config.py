@@ -182,12 +182,6 @@ def add_validator_args(cls, parser):
         default=4096,
     )
 
-    parser.add_argument(
-        "--subtensor.chain_endpoint",
-        type=str,
-        help="The chain endpoint for the subtensor network.",
-        default="wss://entrypoint-finney.opentensor.ai:443",
-    )
 
 
 def config(cls):
@@ -196,8 +190,12 @@ def config(cls):
     """
     parser = argparse.ArgumentParser()
     bt.wallet.add_args(parser)
-    bt.subtensor.add_args(parser)
     bt.logging.add_args(parser)
     bt.axon.add_args(parser)
     cls.add_args(parser)
-    return bt.config(parser)
+    config = bt.config(parser)
+
+    if not hasattr(config.subtensor, "chain_endpoint") or config.subtensor.chain_endpoint is None:
+        config.subtensor.chain_endpoint = "wss://entrypoint-finney.opentensor.ai:443"
+
+    return config
