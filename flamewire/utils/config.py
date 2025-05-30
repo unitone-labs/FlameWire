@@ -190,12 +190,8 @@ def config(cls):
     """
     parser = argparse.ArgumentParser()
     bt.wallet.add_args(parser)
+    bt.subtensor.add_args(parser)
     bt.logging.add_args(parser)
     bt.axon.add_args(parser)
     cls.add_args(parser)
-    config = bt.config(parser)
-
-    if not hasattr(config.subtensor, "chain_endpoint") or config.subtensor.chain_endpoint is None:
-        config.subtensor.chain_endpoint = "wss://entrypoint-finney.opentensor.ai:443"
-
-    return config
+    return bt.config(parser)
