@@ -16,6 +16,7 @@
 # DEALINGS IN THE SOFTWARE.
 
 import copy
+import threading
 
 import bittensor as bt
 
@@ -81,6 +82,8 @@ class BaseNeuron(ABC):
         self.subtensor = bt.subtensor(config=self.config)
         self.metagraph = self.subtensor.metagraph(self.config.netuid)
 
+        self._sync_lock: threading.Lock = threading.Lock()
+
         bt.logging.info(f"Wallet: {self.wallet}")
         bt.logging.info(f"Subtensor: {self.subtensor}")
         bt.logging.info(f"Metagraph: {self.metagraph}")
@@ -105,17 +108,18 @@ class BaseNeuron(ABC):
         """
         Wrapper for synchronizing the state of the network for the given miner or validator.
         """
-        # Ensure miner or validator hotkey is still registered on the network.
-        self.check_registered()
 
-        if self.should_sync_metagraph():
-            self.resync_metagraph()
+        with self._sync_lock:
+            self.check_registered()
 
-        if self.should_set_weights():
-            self.set_weights()
+            if self.should_sync_metagraph():
+                self.resync_metagraph()
 
-        # Always save state.
-        self.save_state()
+            if self.should_set_weights():
+                self.set_weights()
+
+            # Always save state.
+            self.save_state()
 
     def check_registered(self):
         # --- Check for registration.
