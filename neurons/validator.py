@@ -51,7 +51,7 @@ class Validator(BaseValidatorNeuron):
 
         neurons = self.metagraph.neurons
         other_neurons = [n for n in neurons if n.uid != self.uid and n.validator_trust == 0]
-        count = min(10, len(other_neurons))
+        count = min(30, len(other_neurons))
         selected_neurons = random.sample(other_neurons, count)
         bt.logging.info(f"Selected {count} neurons for verification: {selected_neurons}")
 

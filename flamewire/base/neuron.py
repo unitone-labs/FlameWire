@@ -82,7 +82,7 @@ class BaseNeuron(ABC):
         self.subtensor = bt.subtensor(config=self.config)
         self.metagraph = self.subtensor.metagraph(self.config.netuid)
 
-        self._sync_lock: threading.Lock = threading.Lock()
+        self._sync_lock: threading.RLock = threading.RLock()
 
         bt.logging.info(f"Wallet: {self.wallet}")
         bt.logging.info(f"Subtensor: {self.subtensor}")
