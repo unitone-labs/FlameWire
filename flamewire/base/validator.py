@@ -73,10 +73,8 @@ class BaseValidatorNeuron(BaseNeuron):
         self.is_running: bool = False
         self.thread: Union[threading.Thread, None] = None
 
-        self._sync_thread: Union[threading.Thread, None] = None
-        if getattr(self.config.neuron, "enable_background_sync_thread", False):
-            self._sync_thread = threading.Thread(target=self._sync_loop, daemon=True)
-            self._sync_thread.start()
+        self._sync_thread = threading.Thread(target=self._sync_loop, daemon=True)
+        self._sync_thread.start()
 
     async def concurrent_verify(self):
         coroutines = [

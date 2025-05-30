@@ -107,4 +107,7 @@ def ttl_get_block(self) -> int:
 
     Note: self here is the miner or validator instance
     """
+    if hasattr(self, "_sync_lock"):
+        with self._sync_lock:
+            return self.subtensor.get_current_block()
     return self.subtensor.get_current_block()
