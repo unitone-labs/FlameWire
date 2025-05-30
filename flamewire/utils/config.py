@@ -182,6 +182,12 @@ def add_validator_args(cls, parser):
         default=4096,
     )
 
+    parser.add_argument(
+        "--subtensor.chain_endpoint",
+        type=str,
+        help="The chain endpoint for the subtensor network.",
+        default="wss://entrypoint-finney.opentensor.ai:443",
+    )
 
 
 def config(cls):
