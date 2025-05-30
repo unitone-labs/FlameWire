@@ -101,23 +101,18 @@ compute_spec:
 
   validator:
     cpu:
-      min_cores: 8
-      min_speed: 3.0
-      recommended_cores: 16
-      recommended_speed: 3.5
+      min_cores: 6
+      min_speed: 2.6
+      recommended_cores: 8
+      recommended_speed: 3
       architecture: "x86_64"
     memory:
-      min_ram: 32
-      recommended_ram: 64
-      min_swap: 8
-      recommended_swap: 16
-      ram_type: "DDR4"
+      min_ram: 8
+      recommended_ram: 16
     storage:
-      min_space: 1000
-      recommended_space: 2000
-      type: "NVMe SSD"
-      min_iops: 50000
-      recommended_iops: 100000
+      min_space: 20 # 20G
+      recommended_space: 50 # 50G
+
 
 network_spec:
   bandwidth:
@@ -131,20 +126,6 @@ network_spec:
       download: 500   # 500 Mbps
       upload: 500     # 500 Mbps
 
-general_requirements:
-  deployment:
-    - "Prefer bare-metal or dedicated cloud instances to avoid noisy-neighbour I/O penalties"
-    - "All drives should be NVMe with latency < 100 µs and ≥ 100k IOPS"
-    - "SATA SSDs will bottleneck archive reads"
-    - "Stripe two NVMe drives (RAID 0) on Ethereum if budget permits—doubles IOPS for big syncs and heavy tracing"
-  
-  storage_growth:
-    ethereum: "~0.5 TB/year"
-    sui: "~0.2 TB/year"
-  
-  bandwidth_notes:
-    - "1 Gbps provides comfortable headroom"
-    - "Miners in bandwidth-constrained regions should cap RPC concurrency to avoid latency penalties"
 
 os:
   name: "Ubuntu"
