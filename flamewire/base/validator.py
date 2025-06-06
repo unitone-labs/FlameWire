@@ -81,7 +81,10 @@ class BaseValidatorNeuron(BaseNeuron):
             self.verify()
             for _ in range(self.config.neuron.num_concurrent_verifications)
         ]
-        await asyncio.gather(*coroutines)
+        results = await asyncio.gather(*coroutines, return_exceptions=True)
+        for idx, res in enumerate(results):
+            if isinstance(res, Exception):
+                bt.logging.error(f"Error in verify coroutine #{idx}: {res}")
 
     def run(self):
         # Check that validator is registered on the network.
