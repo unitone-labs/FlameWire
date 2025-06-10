@@ -302,9 +302,14 @@ class BaseValidatorNeuron(BaseNeuron):
 
     def save_state(self):
         """Saves the state of the validator to a file."""
-        bt.logging.info("Saving validator state.")
         
+        # Don't save on initialization (step 0) if state file exists
         state_file = "./state.npz"
+        if self.step == 0 and os.path.exists(state_file):
+            bt.logging.info(f"Skipping initial save, existing state file found at {state_file}")
+            return
+            
+        bt.logging.info("Saving validator state.")
         
         try:
             np.savez(
