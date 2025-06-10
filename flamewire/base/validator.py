@@ -24,6 +24,7 @@ import asyncio
 import argparse
 import threading
 import bittensor as bt
+import os
 
 from typing import List, Union
 from traceback import print_exception
@@ -302,24 +303,42 @@ class BaseValidatorNeuron(BaseNeuron):
     def save_state(self):
         """Saves the state of the validator to a file."""
         bt.logging.info("Saving validator state.")
-
-        # Save the state of the validator to file.
-        np.savez(
-            self.config.neuron.full_path + "/state.npz",
-            step=self.step,
-            scores=self.scores,
-            hotkeys=self.hotkeys,
-        )
+        
+        state_file = "./state.npz"
+        
+        try:
+            np.savez(
+                state_file,
+                step=self.step,
+                scores=self.scores,
+                hotkeys=self.hotkeys,
+            )
+            bt.logging.info(f"Successfully saved state to {state_file}")
+            
+            non_zero_scores = (self.scores > 0).sum()
+            bt.logging.info(f"Saved scores: shape={self.scores.shape}, non-zero={non_zero_scores}, max={self.scores.max() if len(self.scores) > 0 else 0}")
+        except Exception as e:
+            bt.logging.error(f"Error saving state: {str(e)}")
 
     def load_state(self):
         """Loads the state of the validator from a file."""
         bt.logging.info("Loading validator state.")
 
-        # Load the state of the validator from file.
-        state = np.load(self.config.neuron.full_path + "/state.npz")
-        self.step = state["step"]
-        self.scores = state["scores"]
-        self.hotkeys = state["hotkeys"]
+        state_file = "./state.npz"
+        
+        try:
+            if os.path.exists(state_file):
+                bt.logging.info(f"Found state file at {state_file}")
+                state = np.load(state_file)
+                self.step = state["step"]
+                self.scores = state["scores"]
+                self.hotkeys = state["hotkeys"]
+                bt.logging.info(f"Successfully loaded state with scores shape {self.scores.shape}")
+            else:
+                bt.logging.warning(f"No state file found at {state_file}, using default initialization")
+        except Exception as e:
+            bt.logging.error(f"Error loading state: {str(e)}")
+            bt.logging.info("Using default initialization")
 
     def _sync_loop(self):
         """Periodically sync the metagraph."""
