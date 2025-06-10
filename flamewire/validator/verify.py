@@ -309,23 +309,15 @@ def print_detailed_scores(node_results, test_runs=1):
         last_n_checks = [node.overall_status_passed] * test_runs
         avg_time = node.duration / test_runs / 1000.0
         last_n_response_times = [avg_time] * test_runs
-        
-        actual_checks_count = len(last_n_checks)
-        
         checks = last_n_checks[-scorer.window_size:] if len(last_n_checks) > scorer.window_size else last_n_checks
         response_times = last_n_response_times[-scorer.window_size:] if len(last_n_response_times) > scorer.window_size else last_n_response_times
-        
-        raw_success_rate = sum(checks) / len(checks) if checks else 0.0
-        
-        has_insufficient_data = actual_checks_count < scorer.window_size
-        if has_insufficient_data:
-            success_rate = raw_success_rate * (1 - scorer.insufficient_data_penalty)
-        else:
-            success_rate = raw_success_rate
-            
+        success_rate = sum(checks) / len(checks) if checks else 0.0
+        penalized = False
+        if len(last_n_checks) < scorer.window_size:
+            success_rate *= 0.8
+            penalized = True
         avg_response_time = sum(response_times) / len(response_times) if response_times else 0.0
         speed_score = max(0.0, min(1.0, (3.0 - avg_response_time) / (3.0 - 0.5)))
-        
         fail_streak = 0
         for check in reversed(checks):
             if not check:
@@ -333,14 +325,9 @@ def print_detailed_scores(node_results, test_runs=1):
             else:
                 break
         fail_streak_penalty = min(fail_streak * scorer.penalty_per_fail, scorer.max_penalty)
-        
         print(f"Miner {node.uid} ({node.hotkey}):")
         print(f"  Score: {node.score:.3f}")
-        print(f"  Raw success rate: {raw_success_rate:.2%}")
-        if has_insufficient_data:
-            print(f"  Success rate (with penalty): {success_rate:.2%} (20% penalty - only {actual_checks_count}/{scorer.window_size} checks)")
-        else:
-            print(f"  Success rate: {success_rate:.2%}")
+        print(f"  Success rate: {success_rate:.2%}" + (" (PENALIZED - below min window size)" if penalized else ""))
         print(f"  Avg response time: {avg_response_time:.3f}s")
         print(f"  Speed score: {speed_score:.2f}")
         print(f"  Fail streak: {fail_streak} (Penalty: {fail_streak_penalty:.2f})")
