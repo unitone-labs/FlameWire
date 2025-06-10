@@ -63,8 +63,7 @@ class Validator(BaseValidatorNeuron):
             num_ref_blocks=3,
             test_runs=1
         )
-        bt.logging.info(f"Verification results: {results}")
-
+        
         uids = [res.uid for res in results]
         rewards = [res.score for res in results]
         bt.logging.info(f"Updating scores for uids={uids} with rewards={rewards}")

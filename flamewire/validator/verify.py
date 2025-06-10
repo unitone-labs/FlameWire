@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 from bittensor import logging
 from flamewire.api import gateway_rpc_call
+from .scoring import MinerScorer
 
 SYSTEM_EVENTS_KEY = "0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7"
 ReferenceBlockData = Tuple[int, str, Optional[str], Optional[dict], int, str]
@@ -251,14 +252,6 @@ def _aggregate(tests: List[NodeTestResult], ref_blocks: List[ReferenceBlockData]
     return overall, success, matches, duration, err_details
 
 
-def _score(overall: bool, duration: float) -> float:
-    if not overall:
-        return 0.0
-    min_ms, max_ms = 500.0, 10000.0
-    bonus = (max_ms - duration) / (max_ms - min_ms)
-    return 0.7 + max(0.0, min(bonus, 1.0)) * 0.3
-
-
 def test_node_multiple(
     gateway_url: str,
     reference_blocks: List[ReferenceBlockData],
@@ -269,7 +262,12 @@ def test_node_multiple(
     session = requests.Session()
     tests = [_test_once(gateway_url, reference_blocks, session, miner, api_key) for _ in range(test_runs)]
     overall, success, matches, duration, err_details = _aggregate(tests, reference_blocks)
-    score = _score(overall, duration)
+    last_n_checks = [t.passed_all_checks for t in tests]
+    last_n_response_times = [t.duration / 1000.0 for t in tests]
+    if last_n_checks and last_n_response_times:
+        score = MinerScorer.quick_score(last_n_checks, last_n_response_times)
+    else:
+        score = 0.0
     return NodeResult(
         overall_status_passed=overall,
         storage_checks_successful=success,
@@ -296,6 +294,38 @@ def check_bittensor_nodes(
         raise RuntimeError("No reference blocks available")
     formatted = [m if isinstance(m, dict) else {"uid": m.uid, "hotkey": m.hotkey} for m in miners]
     results = [test_node_multiple(gateway_url, reference_blocks, test_runs, m, api_key) for m in formatted]
-    for r in results:
-        logging.info(f"Node {r.hotkey} result {r}")
+    print_detailed_scores(results, test_runs)
     return results
+
+
+def print_detailed_scores(node_results, test_runs=1):
+    from .scoring import MinerScorer
+    scorer = MinerScorer()
+    for node in node_results:
+        last_n_checks = [node.overall_status_passed] * test_runs
+        avg_time = node.duration / test_runs / 1000.0
+        last_n_response_times = [avg_time] * test_runs
+        checks = last_n_checks[-scorer.window_size:] if len(last_n_checks) > scorer.window_size else last_n_checks
+        response_times = last_n_response_times[-scorer.window_size:] if len(last_n_response_times) > scorer.window_size else last_n_response_times
+        success_rate = sum(checks) / len(checks) if checks else 0.0
+        avg_response_time = sum(response_times) / len(response_times) if response_times else 0.0
+        if avg_response_time <= 1.0:
+            speed_score = 1.0
+        elif avg_response_time >= scorer.speed_threshold:
+            speed_score = 0.0
+        else:
+            speed_score = (scorer.speed_threshold - avg_response_time) / (scorer.speed_threshold - 1.0)
+        fail_streak = 0
+        for check in reversed(checks):
+            if not check:
+                fail_streak += 1
+            else:
+                break
+        fail_streak_penalty = min(fail_streak * scorer.penalty_per_fail, scorer.max_penalty)
+        print(f"Miner {node.uid} ({node.hotkey}):")
+        print(f"  Score: {node.score:.3f}")
+        print(f"  Success rate: {success_rate:.2%}")
+        print(f"  Avg response time: {avg_response_time:.3f}s")
+        print(f"  Speed score: {speed_score:.2f}")
+        print(f"  Fail streak: {fail_streak} (Penalty: {fail_streak_penalty:.2f})")
+        print("-" * 40)
