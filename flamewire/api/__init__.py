@@ -15,7 +15,7 @@ def gateway_rpc_call(
     miner: Dict[str, Any],
     api_key: str,
     timeout: int = 5,
-) -> dict:
+) -> tuple:
     payload = {"method": method, "params": params, "id": 1, "miners": [miner]}
     url = f"{gateway_url.rstrip('/')}/v1/validators/bittensor"
     resp = session.post(url, json=payload, timeout=timeout, headers={"x-api-key": api_key})
@@ -33,7 +33,9 @@ def gateway_rpc_call(
     inner = data[0].get("result")
     if inner is None:
         raise RuntimeError(f"Gateway result missing {_shorten(data[0])}")
-    return inner["result"] if isinstance(inner, dict) and "result" in inner else inner
+    response_time_ms = data[0].get("response_time_ms", 0)
+    result = inner["result"] if isinstance(inner, dict) and "result" in inner else inner
+    return result, response_time_ms
 
 
 def post_node_results(gateway_url: str, api_key: str, nodes: List[Dict[str, Any]]) -> None:

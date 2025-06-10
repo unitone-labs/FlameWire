@@ -179,12 +179,12 @@ def _storage_ok(
     expected_events: Optional[str],
     expected_metadata: Optional[dict],
     api_key: str,
-) -> bool:
-    events = gateway_rpc_call(session, gateway_url, "state_getStorage", [SYSTEM_EVENTS_KEY, block_hash], miner, api_key)
+) -> tuple:
+    events, rt1 = gateway_rpc_call(session, gateway_url, "state_getStorage", [SYSTEM_EVENTS_KEY, block_hash], miner, api_key)
     if events != expected_events:
-        return False
-    meta = gateway_rpc_call(session, gateway_url, "state_call", ["Metadata_metadata", "", block_hash], miner, api_key)
-    return expected_metadata is None or meta == expected_metadata
+        return False, rt1
+    meta, rt2 = gateway_rpc_call(session, gateway_url, "state_call", ["Metadata_metadata", "", block_hash], miner, api_key)
+    return (expected_metadata is None or meta == expected_metadata), rt1 + rt2
 
 
 def _test_once(
@@ -194,18 +194,20 @@ def _test_once(
     miner: Dict[str, Any],
     api_key: str,
 ) -> NodeTestResult:
-    start = time.time()
     res = NodeTestResult()
+    total_response_time_ms = 0
     for num, ref_hash, events, metadata, ext_idx, sender_pk in reference_blocks:
         try:
-            ok = _storage_ok(session, gateway_url, miner, ref_hash, events, metadata, api_key)
+            ok, rt_storage = _storage_ok(session, gateway_url, miner, ref_hash, events, metadata, api_key)
+            total_response_time_ms += rt_storage
         except Exception as e:
             logging.warning(f"Storage check error {num} {e}")
             ok = False
         res.storage_state_checks.append(StateCheckResult(success=ok, data_matches=ok))
         res.passed_all_checks &= ok
         try:
-            actual_hash = gateway_rpc_call(session, gateway_url, "chain_getBlockHash", [num], miner, api_key)
+            actual_hash, rt_hash = gateway_rpc_call(session, gateway_url, "chain_getBlockHash", [num], miner, api_key)
+            total_response_time_ms += rt_hash
         except Exception as e:
             logging.warning(f"BlockHash error {num} {e}")
             actual_hash = None
@@ -213,7 +215,8 @@ def _test_once(
         if actual_hash == ref_hash:
             blk_res.block_hash_check = True
             try:
-                blk = gateway_rpc_call(session, gateway_url, "chain_getBlock", [actual_hash], miner, api_key)
+                blk, rt_blk = gateway_rpc_call(session, gateway_url, "chain_getBlock", [actual_hash], miner, api_key)
+                total_response_time_ms += rt_blk
                 exts = blk.get("block", {}).get("extrinsics", [])
                 if ext_idx < len(exts):
                     ext_hex = exts[ext_idx]
@@ -234,7 +237,7 @@ def _test_once(
         res.block_checks.append(blk_res)
         if not res.passed_all_checks:
             break
-    res.duration = int((time.time() - start) * 1000)
+    res.duration = total_response_time_ms
     return res
 
 
@@ -268,6 +271,7 @@ def test_node_multiple(
         score = MinerScorer.quick_score(last_n_checks, last_n_response_times)
     else:
         score = 0.0
+    duration = sum(t.duration for t in tests)
     return NodeResult(
         overall_status_passed=overall,
         storage_checks_successful=success,
@@ -309,12 +313,7 @@ def print_detailed_scores(node_results, test_runs=1):
         response_times = last_n_response_times[-scorer.window_size:] if len(last_n_response_times) > scorer.window_size else last_n_response_times
         success_rate = sum(checks) / len(checks) if checks else 0.0
         avg_response_time = sum(response_times) / len(response_times) if response_times else 0.0
-        if avg_response_time <= 1.0:
-            speed_score = 1.0
-        elif avg_response_time >= scorer.speed_threshold:
-            speed_score = 0.0
-        else:
-            speed_score = (scorer.speed_threshold - avg_response_time) / (scorer.speed_threshold - 1.0)
+        speed_score = max(0.0, min(1.0, (3.0 - avg_response_time) / (3.0 - 0.5)))
         fail_streak = 0
         for check in reversed(checks):
             if not check:
