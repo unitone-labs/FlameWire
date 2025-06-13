@@ -39,7 +39,7 @@ def gateway_rpc_call(
 
 
 def post_node_results(gateway_url: str, api_key: str, nodes: List[Dict[str, Any]]) -> None:
-    url = f"{gateway_url.rstrip('/')}/v1/validators/nodes"
+    url = f"{gateway_url.rstrip('/')}/v1/validators/bittensor/nodes"
     resp = requests.post(url, json={"nodes": nodes}, headers={"x-api-key": api_key}, timeout=10)
     try:
         resp.raise_for_status()
@@ -49,6 +49,21 @@ def post_node_results(gateway_url: str, api_key: str, nodes: List[Dict[str, Any]
         except ValueError:
             detail = resp.text[:500]
         raise RuntimeError(f"{detail}") from None
+
+
+def get_validator_nodes(gateway_url: str, api_key: str, uids: List[int]) -> Dict[str, Any]:
+    query = ",".join(str(u) for u in uids)
+    url = f"{gateway_url.rstrip('/')}/v1/validators/bittensor/nodes"
+    resp = requests.get(url, params={"uids": query}, headers={"x-api-key": api_key}, timeout=10)
+    try:
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError:
+        try:
+            detail = resp.json()
+        except ValueError:
+            detail = resp.text[:500]
+        raise RuntimeError(f"{detail}") from None
+    return resp.json()
 
 
 def register_miner(register_url: str, payload: Dict[str, Any]) -> Dict[str, Any]:

@@ -28,7 +28,8 @@ import bittensor as bt
 
 from flamewire.base.validator import BaseValidatorNeuron
 from flamewire.validator.verify import check_bittensor_nodes
-from flamewire.api import post_node_results
+from flamewire.api import post_node_results, get_validator_nodes
+from flamewire.validator.scoring import MinerScorer
 
 class Validator(BaseValidatorNeuron):
     """
@@ -65,10 +66,6 @@ class Validator(BaseValidatorNeuron):
         )
         
         uids = [res.uid for res in results]
-        rewards = [res.score for res in results]
-        bt.logging.info(f"Updating scores for uids={uids} with rewards={rewards}")
-        self.update_scores(rewards, uids)
-        bt.logging.info(f"New moving average scores: {self.scores}")
 
         nodes_payload = [
             {
@@ -76,7 +73,6 @@ class Validator(BaseValidatorNeuron):
                 "hotkey": r.hotkey,
                 "success": r.overall_status_passed,
                 "duration": r.duration,
-                "score": r.score,
             }
             for r in results
         ]
@@ -86,6 +82,27 @@ class Validator(BaseValidatorNeuron):
             bt.logging.info("Posted node results")
         except Exception as e:
             bt.logging.error(f"Failed to post node results: {e}")
+        else:
+            try:
+                miners = get_validator_nodes(self.config.gateway_url, self.config.api_key, uids)
+                scorer = MinerScorer()
+                rewards = []
+                reward_uids = []
+                for m in miners:
+                    last_checks = m.get("last_n_checks", [])
+                    last_times = m.get("last_n_response_times", [])
+                    score, success_rate, avg_time, speed_score, fail_streak = scorer.score_with_metrics(last_checks, last_times)
+                    bt.logging.info(
+                        f"Miner {m.get('uid')}: avg_time={avg_time:.2f}s, success_rate={success_rate:.2f}, speed_score={speed_score:.2f}, fail_streak={fail_streak}, score={score:.4f}"
+                    )
+
+                    rewards.append(score)
+                    reward_uids.append(m.get("uid"))
+                bt.logging.info(f"Updating scores for uids={reward_uids} with rewards={rewards}")
+                self.update_scores(rewards, reward_uids)
+                bt.logging.info(f"New moving average scores: {self.scores}")
+            except Exception as e:
+                bt.logging.error(f"Failed to fetch or update scores: {e}")
 
 if __name__ == "__main__":
     with Validator() as validator:
