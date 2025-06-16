@@ -22,25 +22,6 @@ import argparse
 import bittensor as bt
 from .logging import setup_events_logger
 
-
-def is_cuda_available():
-    try:
-        output = subprocess.check_output(
-            ["nvidia-smi", "-L"], stderr=subprocess.STDOUT
-        )
-        if "NVIDIA" in output.decode("utf-8"):
-            return "cuda"
-    except Exception:
-        pass
-    try:
-        output = subprocess.check_output(["nvcc", "--version"]).decode("utf-8")
-        if "release" in output:
-            return "cuda"
-    except Exception:
-        pass
-    return "cpu"
-
-
 def check_config(cls, config: "bt.Config"):
     r"""Checks/validates the config namespace object."""
     bt.logging.check_config(config)
@@ -72,20 +53,20 @@ def add_args(cls, parser):
     Adds relevant arguments to the parser for operation.
     """
 
-    parser.add_argument("--netuid", type=int, help="Subnet netuid", default=1)
-
-    parser.add_argument(
-        "--neuron.device",
-        type=str,
-        help="Device to run on.",
-        default=is_cuda_available(),
-    )
+    parser.add_argument("--netuid", type=int, help="Subnet netuid", default=97)
 
     parser.add_argument(
         "--neuron.epoch_length",
         type=int,
         help="The default epoch length (how often we set weights, measured in 12 second blocks).",
         default=100,
+    )
+
+    parser.add_argument(
+        "--neuron.block_per_tempo",
+        type=int,
+        help="The number of blocks per tempo.",
+        default=360,
     )
 
     parser.add_argument(
@@ -172,7 +153,7 @@ def add_validator_args(cls, parser):
         "--neuron.moving_average_alpha",
         type=float,
         help="Moving average alpha parameter, how much to add of the new observation.",
-        default=0.1,
+        default=0.5,
     )
 
     parser.add_argument(

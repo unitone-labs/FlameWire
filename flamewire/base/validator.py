@@ -93,13 +93,16 @@ class BaseValidatorNeuron(BaseNeuron):
         bt.logging.info(f"Validator starting at block: {self.block}")
         while True:
             try:
+                start = time.time()
                 bt.logging.info(f"step({self.step}) block({self.block})")
                 self.loop.run_until_complete(self.concurrent_verify())
                 if self.should_exit:
                     break
                 self.sync()
                 self.step += 1
-                time.sleep(300)
+                elapsed = time.time() - start
+                wait = max(480 - elapsed, 0)  # 40 blocks × 12s
+                time.sleep(wait)
             except KeyboardInterrupt:
                 bt.logging.success("Validator killed by keyboard interrupt.")
                 exit()
