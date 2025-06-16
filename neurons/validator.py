@@ -85,7 +85,7 @@ class Validator(BaseValidatorNeuron):
             selected += shuffled_miners[:remaining]
         
         bt.logging.info(
-            f"Tempo {current_tempo}, Round {round_in_tempo}/{rounds_per_tempo-1}: "
+            f"Tempo {current_tempo}, Round {round_in_tempo + 1}/{rounds_per_tempo}: "
             f"Selected {len(selected)} miners"
         )
         
