@@ -99,7 +99,7 @@ class BaseValidatorNeuron(BaseNeuron):
                     break
                 self.sync()
                 self.step += 1
-                time.sleep(300)
+                time.sleep(470)
             except KeyboardInterrupt:
                 bt.logging.success("Validator killed by keyboard interrupt.")
                 exit()

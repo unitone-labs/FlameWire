@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import time
 import random
-
+import numpy as np
 import bittensor as bt
 
 from flamewire.base.validator import BaseValidatorNeuron
@@ -32,29 +32,75 @@ from flamewire.api import post_node_results, get_validator_nodes
 from flamewire.validator.scoring import MinerScorer
 
 class Validator(BaseValidatorNeuron):
-    """
-    Your validator neuron class. You should use this class to define your validator's behavior. In particular, you should replace the forward function with your own logic.
-
-    This class inherits from the BaseValidatorNeuron class, which in turn inherits from BaseNeuron. The BaseNeuron class takes care of routine tasks such as setting up wallet, subtensor, metagraph, logging directory, parsing config, etc. You can override any of the methods in BaseNeuron if you need to customize the behavior.
-
-    This class provides reasonable default behavior for a validator such as keeping a moving average of the scores of the miners and using them to set weights at the end of each epoch. Additionally, the scores are reset for new hotkeys at the end of each epoch.
-    """
-
     def __init__(self, config=None):
         super(Validator, self).__init__(config=config)
-
+        
         bt.logging.info("load_state()")
         self.load_state()
 
+    def get_shuffled_round_robin_miners(self, count=30):
+        miners = [n for n in self.metagraph.neurons if n.uid != self.uid and n.validator_trust == 0]
+        total_miners = len(miners)
+        
+        if total_miners == 0:
+            return []
+        
+        bt.logging.info(f"miners: {len(miners)}")
+        
+        blocks_per_tempo = self.config.neuron.block_per_tempo
+        rounds_per_tempo = (total_miners + count - 1) // count
+        blocks_per_round = blocks_per_tempo // rounds_per_tempo
+        
+        current_tempo = self.block // blocks_per_tempo
+        blocks_in_tempo = self.block % blocks_per_tempo
+        round_in_tempo = blocks_in_tempo // blocks_per_round
+
+        bt.logging.debug(
+            f"Debug: miners={total_miners}, rounds_per_tempo={rounds_per_tempo}, "
+            f"blocks_per_round={blocks_per_round}, current_block={self.block}, "
+            f"blocks_in_tempo={blocks_in_tempo}, round_in_tempo={round_in_tempo}"
+        )
+        
+        if round_in_tempo >= rounds_per_tempo:
+            round_in_tempo = rounds_per_tempo - 1
+        
+        tempo_start_block = current_tempo * blocks_per_tempo
+        try:
+            block_hash = self.subtensor.get_block_hash(max(0, tempo_start_block - 1))
+            seed = int(block_hash[-16:], 16)
+        except:
+            seed = current_tempo
+        
+        rng = random.Random(seed)
+        shuffled_miners = miners.copy()
+        rng.shuffle(shuffled_miners)
+        
+        start_idx = round_in_tempo * count
+        end_idx = min(start_idx + count, total_miners)
+        
+        selected = shuffled_miners[start_idx:end_idx]
+        
+        if len(selected) < count and total_miners >= count:
+            remaining = count - len(selected)
+            selected += shuffled_miners[:remaining]
+        
+        bt.logging.info(
+            f"Tempo {current_tempo}, Round {round_in_tempo}/{rounds_per_tempo-1}: "
+            f"Selected {len(selected)} miners"
+        )
+        
+        return selected
+
     async def verify(self):
         bt.logging.info("verify()")
-        bt.logging.info(f"Rpc url: {self.config.rpc_url}, api key: {self.config.api_key}")
-
-        neurons = self.metagraph.neurons
-        other_neurons = [n for n in neurons if n.uid != self.uid and n.validator_trust == 0]
-        count = min(30, len(other_neurons))
-        selected_neurons = random.sample(other_neurons, count)
-        bt.logging.info(f"Selected {count} neurons for verification: {selected_neurons}")
+        
+        selected_neurons = self.get_shuffled_round_robin_miners(count=30)
+        
+        if not selected_neurons:
+            bt.logging.info("No miners to verify in this round")
+            return
+        
+        bt.logging.info(f"Selected {len(selected_neurons)} neurons for verification")
 
         results = check_bittensor_nodes(
             rpc_url=self.config.rpc_url,
@@ -76,6 +122,7 @@ class Validator(BaseValidatorNeuron):
             }
             for r in results
         ]
+        
         try:
             bt.logging.info(f"POSTing {len(nodes_payload)} node results")
             post_node_results(self.config.gateway_url, self.config.api_key, nodes_payload)
@@ -88,19 +135,25 @@ class Validator(BaseValidatorNeuron):
                 scorer = MinerScorer()
                 rewards = []
                 reward_uids = []
+                
                 for m in miners:
                     last_checks = m.get("last_n_checks", [])
                     last_times = m.get("last_n_response_times", [])
                     score, success_rate, avg_time, speed_score, fail_streak = scorer.score_with_metrics(last_checks, last_times)
+                    
                     bt.logging.info(
-                        f"Miner {m.get('uid')}: avg_time={avg_time:.2f}s, success_rate={success_rate:.2f}, speed_score={speed_score:.2f}, fail_streak={fail_streak}, score={score:.4f}"
+                        f"Miner {m.get('uid')}: avg_time={avg_time:.2f}s, "
+                        f"success_rate={success_rate:.2f}, speed_score={speed_score:.2f}, "
+                        f"fail_streak={fail_streak}, score={score:.4f}"
                     )
 
                     rewards.append(score)
                     reward_uids.append(m.get("uid"))
+                
                 bt.logging.info(f"Updating scores for uids={reward_uids} with rewards={rewards}")
                 self.update_scores(rewards, reward_uids)
                 bt.logging.info(f"New moving average scores: {self.scores}")
+                
             except Exception as e:
                 bt.logging.error(f"Failed to fetch or update scores: {e}")
 
