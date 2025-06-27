@@ -23,7 +23,7 @@ class MinerScorer:
         weighted = sum(r * w for r, w in zip(rates, applied_weights))
         return weighted / total_weight if total_weight else 0.0
 
-    def _metrics(self, last_n_checks: List[bool], last_n_response_times: List[float]) -> Tuple[float, float, float, int]:
+    def _metrics(self, last_n_checks: List[bool], last_n_response_times: List[float]) -> Tuple[float, float, float]:
         checks = last_n_checks[-self.window_size:] if len(last_n_checks) > self.window_size else last_n_checks
         times = last_n_response_times[-self.window_size:] if len(last_n_response_times) > self.window_size else last_n_response_times
         success_rate = self.calculate_windowed_success_rate(checks)
@@ -40,13 +40,8 @@ class MinerScorer:
         else:
             avg_time = 0.0
         speed_score = max(0.0, min(1.0, (3.0 - avg_time) / (3.0 - 0.5)))
-        fail_streak = 0
-        for check in reversed(checks):
-            if not check:
-                fail_streak += 1
-            else:
-                break
-        return success_rate, avg_time, speed_score, fail_streak
+        
+        return success_rate, avg_time, speed_score
 
     def score(self, last_n_checks: List[bool], last_n_response_times: List[float]) -> float:
         success_rate, _, speed_score, _ = self._metrics(last_n_checks, last_n_response_times)
@@ -55,11 +50,11 @@ class MinerScorer:
 
     def score_with_metrics(
         self, last_n_checks: List[bool], last_n_response_times: List[float]
-    ) -> Tuple[float, float, float, float, int]:
-        """Return score along with success rate, average time, speed score and fail streak."""
-        success_rate, avg_time, speed_score, fail_streak = self._metrics(last_n_checks, last_n_response_times)
+    ) -> Tuple[float, float, float, float]:
+        """Return score along with success rate, average time and speed score."""
+        success_rate, avg_time, speed_score = self._metrics(last_n_checks, last_n_response_times)
         score = self.score(last_n_checks, last_n_response_times)
-        return score, success_rate, avg_time, speed_score, fail_streak
+        return score, success_rate, avg_time, speed_score
 
     @staticmethod
     def quick_score(last_n_checks: List[bool], last_n_response_times: List[float], window_size: int = 25) -> float:

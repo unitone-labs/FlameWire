@@ -146,12 +146,12 @@ class Validator(BaseValidatorNeuron):
                 for m in miners:
                     last_checks = m.get("last_n_checks", [])
                     last_times = m.get("last_n_response_times", [])
-                    score, success_rate, avg_time, speed_score, fail_streak = scorer.score_with_metrics(last_checks, last_times)
+                    score, success_rate, avg_time, speed_score = scorer.score_with_metrics(last_checks, last_times)
 
                     bt.logging.info(
                         f"Miner {m.get('uid')}: avg_time={avg_time:.2f}s, "
                         f"success_rate={success_rate:.2f}, speed_score={speed_score:.2f}, "
-                        f"fail_streak={fail_streak}, score={score:.4f}"
+                        f"score={score:.4f}"
                     )
 
                     if self.wandb:
