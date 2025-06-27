@@ -55,7 +55,11 @@ class BaseValidatorNeuron(BaseNeuron):
         super().__init__(config=config)
 
         # Initialize wandb logging if enabled in the config.
-        self.wandb = init_wandb(self.config, project="FlameWire", entity="unitonelabs", settings=wandb.Settings(disable_code=True))
+        self.wandb = init_wandb(
+            self.config,
+            project="FlameWire",
+            entity="unitonelabs"
+        )
 
         # Save a copy of the hotkeys to local memory.
         self.hotkeys = copy.deepcopy(self.metagraph.hotkeys)
