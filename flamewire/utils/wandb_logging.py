@@ -27,6 +27,14 @@ def init_wandb(config, **kwargs):
 
     mode = "offline" if config.wandb.offline else "online"
     os.environ.setdefault("WANDB_SILENT", "true")
+
+    api_key = os.getenv("WANDB_API_KEY")
+    if api_key:
+        try:
+            wandb.login(key=api_key, relogin=True)
+        except Exception as e:
+            bt.logging.warning(f"Failed to login to wandb: {e}")
+
     try:
         wandb.init(mode=mode, notes=config.wandb.notes, **kwargs)
         bt.logging.info(f"wandb initialized in {mode} mode")

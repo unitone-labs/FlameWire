@@ -193,7 +193,7 @@ To run a validator on FlameWire subnet, follow these steps:
 Important Notes:
 - The validator API key is required and can be obtained from our Discord
 - RPC_URL can be your own local archive node or any third-party provider
-- Store `WALLET_NAME`, `WALLET_HOTKEY`, `RPC_URL`, and `API_KEY` in a `.env` file
+- Store `WALLET_NAME`, `WALLET_HOTKEY`, `RPC_URL`, `API_KEY`, and `WANDB_API_KEY` in a `.env` file
 - Ensure your system has sufficient resources (CPU, RAM, network)
 - Monitor your validator's performance regularly
 - Keep your API key and wallet credentials secure
