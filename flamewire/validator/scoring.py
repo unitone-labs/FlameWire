@@ -2,10 +2,8 @@ from typing import List, Tuple
 import numpy as np
 
 class MinerScorer:
-    def __init__(self, window_size: int = 25, penalty_per_fail: float = 0.02, max_penalty: float = 0.2):
+    def __init__(self, window_size: int = 25):
         self.window_size = window_size
-        self.penalty_per_fail = penalty_per_fail
-        self.max_penalty = max_penalty
 
     def calculate_windowed_success_rate(self, last_n_checks: List[bool]) -> float:
         """Calculate weighted success rate across windows of size 5."""
@@ -17,7 +15,7 @@ class MinerScorer:
         for i in range(len(last_n_checks), 0, -window):
             windows.append(last_n_checks[max(0, i - window) : i])
 
-        weights = [0.4, 0.3, 0.2, 0.1]
+        weights = [0.333, 0.267, 0.2, 0.133, 0.067]
         rates = [sum(w) / len(w) if w else 0.0 for w in windows]
 
         applied_weights = weights[: len(rates)]
@@ -51,21 +49,8 @@ class MinerScorer:
         return success_rate, avg_time, speed_score, fail_streak
 
     def score(self, last_n_checks: List[bool], last_n_response_times: List[float]) -> float:
-        success_rate, _, speed_score, fail_streak = self._metrics(last_n_checks, last_n_response_times)
-        if fail_streak == 0:
-            fail_streak_penalty = 0.0
-        elif fail_streak == 1:
-            fail_streak_penalty = 0.02
-        elif fail_streak == 2:
-            fail_streak_penalty = 0.04
-        elif fail_streak == 3:
-            fail_streak_penalty = 0.07
-        elif fail_streak == 4:
-            fail_streak_penalty = 0.10
-        else:
-            fail_streak_penalty = self.max_penalty
-
-        score = 0.7 * success_rate + 0.3 * speed_score - fail_streak_penalty
+        success_rate, _, speed_score, _ = self._metrics(last_n_checks, last_n_response_times)
+        score = 0.7 * success_rate + 0.3 * speed_score
         return max(score, 0.0)
 
     def score_with_metrics(
@@ -77,6 +62,6 @@ class MinerScorer:
         return score, success_rate, avg_time, speed_score, fail_streak
 
     @staticmethod
-    def quick_score(last_n_checks: List[bool], last_n_response_times: List[float], window_size: int = 25, penalty_per_fail: float = 0.02, max_penalty: float = 0.2) -> float:
-        scorer = MinerScorer(window_size, penalty_per_fail, max_penalty)
-        return scorer.score(last_n_checks, last_n_response_times) 
+    def quick_score(last_n_checks: List[bool], last_n_response_times: List[float], window_size: int = 25) -> float:
+        scorer = MinerScorer(window_size)
+        return scorer.score(last_n_checks, last_n_response_times)
