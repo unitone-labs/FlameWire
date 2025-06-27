@@ -2,3 +2,4 @@ loguru>=0.7.3
 bittensor>=9.6.1
 requests>=2.0.0
 numpy>=1.0.0
+wandb>=0.16.6

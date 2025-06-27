@@ -25,6 +25,7 @@ import argparse
 import threading
 import bittensor as bt
 import os
+import wandb
 
 from typing import List, Union
 from traceback import print_exception
@@ -35,6 +36,7 @@ from flamewire.base.utils.weight_utils import (
     convert_weights_and_uids_for_emit,
 )
 from flamewire.utils.config import add_validator_args
+from flamewire.utils.wandb_logging import init_wandb
 import time
 
 class BaseValidatorNeuron(BaseNeuron):
@@ -51,6 +53,9 @@ class BaseValidatorNeuron(BaseNeuron):
 
     def __init__(self, config=None):
         super().__init__(config=config)
+
+        # Initialize wandb logging if enabled in the config.
+        self.wandb = init_wandb(self.config, project="flamewire-validator")
 
         # Save a copy of the hotkeys to local memory.
         self.hotkeys = copy.deepcopy(self.metagraph.hotkeys)
@@ -183,6 +188,15 @@ class BaseValidatorNeuron(BaseNeuron):
 
         bt.logging.debug("raw_weights", raw_weights)
         bt.logging.debug("raw_weight_uids", str(self.metagraph.uids.tolist()))
+
+        # Log normalized weights to wandb if enabled.
+        if self.wandb is not None:
+            epoch = self.block // self.config.neuron.epoch_length
+            self.wandb.log({
+                "weights": wandb.Histogram(raw_weights),
+                "block": self.block,
+                "epoch": epoch,
+            }, step=self.block)
         # Process the raw weights to final_weights via subtensor limitations.
         (
             processed_weight_uids,
