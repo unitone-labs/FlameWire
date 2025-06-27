@@ -34,9 +34,25 @@ from flamewire.validator.scoring import MinerScorer
 class Validator(BaseValidatorNeuron):
     def __init__(self, config=None):
         super(Validator, self).__init__(config=config)
-        
+
         bt.logging.info("load_state()")
         self.load_state()
+
+        # Initialize wandb table for miner metrics if wandb is enabled.
+        if self.wandb:
+            self.miner_table = self.wandb.Table(
+                columns=[
+                    "tempo",
+                    "round",
+                    "uid",
+                    "score",
+                    "speed_score",
+                    "avg_time",
+                    "success_rate",
+                ]
+            )
+        else:
+            self.miner_table = None
 
     def get_shuffled_round_robin_miners(self, count=30):
         miners = [n for n in self.metagraph.neurons if n.uid != self.uid and n.validator_trust == 0]
@@ -154,20 +170,35 @@ class Validator(BaseValidatorNeuron):
                         f"score={score:.4f}"
                     )
 
-                    if self.wandb:
-                        self.wandb.log({
-                            "uid": m.get("uid"),
-                            "block": current_block,
-                            "tempo": current_tempo,
-                            "round": round_in_tempo,
-                            "speed_score": speed_score,
-                            "success_rate": success_rate,
-                            "score": score,
-                        }, step=current_block)
+                    if self.miner_table is not None:
+                        self.miner_table.add_data(
+                            current_tempo,
+                            round_in_tempo,
+                            m.get("uid"),
+                            score,
+                            speed_score,
+                            avg_time,
+                            success_rate,
+                        )
 
                     rewards.append(score)
                     reward_uids.append(m.get("uid"))
                 
+                if self.wandb and self.miner_table is not None:
+                    self.wandb.log({"Miners": self.miner_table}, step=current_block)
+                    # Start a new table for the next round
+                    self.miner_table = self.wandb.Table(
+                        columns=[
+                            "tempo",
+                            "round",
+                            "uid",
+                            "score",
+                            "speed_score",
+                            "avg_time",
+                            "success_rate",
+                        ]
+                    )
+
                 bt.logging.info(f"Updating scores for uids={reward_uids} with rewards={rewards}")
                 self.update_scores(rewards, reward_uids)
                 bt.logging.info(f"New moving average scores: {self.scores}")

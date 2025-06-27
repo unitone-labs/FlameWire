@@ -201,5 +201,6 @@ def config(cls):
     cfg.gateway_url = os.getenv("GATEWAY_URL", cfg.gateway_url)
     cfg.wallet.name = os.getenv("WALLET_NAME", cfg.wallet.name)
     cfg.wallet.hotkey = os.getenv("WALLET_HOTKEY", cfg.wallet.hotkey)
+    cfg.subtensor.network = os.getenv("SUBTENSOR_NETWORK", cfg.subtensor.network)
 
     return cfg
