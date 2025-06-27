@@ -44,7 +44,7 @@ class MinerScorer:
         return success_rate, avg_time, speed_score
 
     def score(self, last_n_checks: List[bool], last_n_response_times: List[float]) -> float:
-        success_rate, _, speed_score, _ = self._metrics(last_n_checks, last_n_response_times)
+        success_rate, _, speed_score = self._metrics(last_n_checks, last_n_response_times)
         score = 0.8 * success_rate + 0.2 * speed_score
         return max(score, 0.0)
 
