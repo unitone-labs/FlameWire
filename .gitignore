@@ -2,3 +2,4 @@ flamewire.egg-info
 __pycache__
 miner.json
 state.npz
+.env

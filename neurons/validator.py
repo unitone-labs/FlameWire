@@ -93,8 +93,15 @@ class Validator(BaseValidatorNeuron):
 
     async def verify(self):
         bt.logging.info("verify()")
-        
+
         selected_neurons = self.get_shuffled_round_robin_miners(count=30)
+        current_block = self.block
+        block_per_tempo = self.config.neuron.block_per_tempo
+        current_tempo = current_block // block_per_tempo
+        miners = [n for n in self.metagraph.neurons if n.uid != self.uid and n.validator_trust == 0]
+        rounds_per_tempo = (len(miners) + 30 - 1) // 30 if miners else 1
+        blocks_per_round = block_per_tempo // rounds_per_tempo
+        round_in_tempo = (current_block % block_per_tempo) // blocks_per_round
         
         if not selected_neurons:
             bt.logging.info("No miners to verify in this round")
@@ -139,13 +146,24 @@ class Validator(BaseValidatorNeuron):
                 for m in miners:
                     last_checks = m.get("last_n_checks", [])
                     last_times = m.get("last_n_response_times", [])
-                    score, success_rate, avg_time, speed_score, fail_streak = scorer.score_with_metrics(last_checks, last_times)
-                    
+                    score, success_rate, avg_time, speed_score = scorer.score_with_metrics(last_checks, last_times)
+
                     bt.logging.info(
                         f"Miner {m.get('uid')}: avg_time={avg_time:.2f}s, "
                         f"success_rate={success_rate:.2f}, speed_score={speed_score:.2f}, "
-                        f"fail_streak={fail_streak}, score={score:.4f}"
+                        f"score={score:.4f}"
                     )
+
+                    if self.wandb:
+                        self.wandb.log({
+                            "uid": m.get("uid"),
+                            "block": current_block,
+                            "tempo": current_tempo,
+                            "round": round_in_tempo,
+                            "speed_score": speed_score,
+                            "success_rate": success_rate,
+                            "score": score,
+                        }, step=current_block)
 
                     rewards.append(score)
                     reward_uids.append(m.get("uid"))

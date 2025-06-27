@@ -61,7 +61,7 @@ def _rpc_call(
     timeout: int = 5,
 ) -> dict:
     payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
-    logging.debug(f"RPC {url} {method} {_shorten(params)}")
+    logging.debug(f"RPC {method} {_shorten(params)}")
     resp = session.post(url, json=payload, timeout=timeout)
     resp.raise_for_status()
     data = resp.json()

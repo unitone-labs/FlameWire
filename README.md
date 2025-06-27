@@ -154,15 +154,13 @@ To run a validator on FlameWire subnet, follow these steps:
 3. **Start Validator**
    Using PM2 for process management:
    ```bash
-   # Start validator with PM2
+   # Copy the example environment file and edit with your credentials
+   cp .env.example .env
+   # Start validator with PM2 (values are read from .env)
    pm2 start neurons/validator.py --name flamewire-validator --interpreter python3 -- \
-     --wallet.name YOUR_WALLET_NAME \
-     --wallet.hotkey YOUR_WALLET_HOTKEY \
      --netuid 97 \
      --subtensor.network finney \
-     --logging.debug \
-     --api_key YOUR_API_KEY \
-     --rpc_url YOUR_RPC_URL
+     --logging.debug
 
    # Monitor validator
    pm2 monit
@@ -195,6 +193,7 @@ To run a validator on FlameWire subnet, follow these steps:
 Important Notes:
 - The validator API key is required and can be obtained from our Discord
 - RPC_URL can be your own local archive node or any third-party provider
+- Store `WALLET_NAME`, `WALLET_HOTKEY`, `RPC_URL`, and `API_KEY` in a `.env` file
 - Ensure your system has sufficient resources (CPU, RAM, network)
 - Monitor your validator's performance regularly
 - Keep your API key and wallet credentials secure

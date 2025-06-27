@@ -22,6 +22,22 @@ import argparse
 import bittensor as bt
 from .logging import setup_events_logger
 
+
+def load_env(env_path: str = ".env"):
+    """Load environment variables from a .env file if it exists."""
+    if not os.path.exists(env_path):
+        return
+    try:
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                os.environ.setdefault(key.strip(), val.strip())
+    except Exception as e:
+        bt.logging.warning(f"Failed to load {env_path}: {e}")
+
 def check_config(cls, config: "bt.Config"):
     r"""Checks/validates the config namespace object."""
     bt.logging.check_config(config)
@@ -59,7 +75,7 @@ def add_args(cls, parser):
         "--neuron.epoch_length",
         type=int,
         help="The default epoch length (how often we set weights, measured in 12 second blocks).",
-        default=100,
+        default=360,
     )
 
     parser.add_argument(
@@ -153,7 +169,7 @@ def add_validator_args(cls, parser):
         "--neuron.moving_average_alpha",
         type=float,
         help="Moving average alpha parameter, how much to add of the new observation.",
-        default=0.5,
+        default=0.1,
     )
 
     parser.add_argument(
@@ -169,10 +185,21 @@ def config(cls):
     """
     Returns the configuration object specific to this miner or validator after adding relevant arguments.
     """
+    load_env()
     parser = argparse.ArgumentParser()
     bt.wallet.add_args(parser)
     bt.subtensor.add_args(parser)
     bt.logging.add_args(parser)
     bt.axon.add_args(parser)
     cls.add_args(parser)
-    return bt.config(parser)
+
+    cfg = bt.config(parser)
+
+    # Override sensitive settings from environment variables if present
+    cfg.rpc_url = os.getenv("RPC_URL", cfg.rpc_url)
+    cfg.api_key = os.getenv("API_KEY", cfg.api_key)
+    cfg.gateway_url = os.getenv("GATEWAY_URL", cfg.gateway_url)
+    cfg.wallet.name = os.getenv("WALLET_NAME", cfg.wallet.name)
+    cfg.wallet.hotkey = os.getenv("WALLET_HOTKEY", cfg.wallet.hotkey)
+
+    return cfg
