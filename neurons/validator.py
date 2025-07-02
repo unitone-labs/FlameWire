@@ -97,11 +97,14 @@ class Validator(BaseValidatorNeuron):
         end_idx = min(start_idx + count, total_miners)
         
         selected = shuffled_miners[start_idx:end_idx]
-        
-        if len(selected) < count and total_miners >= count:
-            remaining = count - len(selected)
-            selected += shuffled_miners[:remaining]
-        
+
+        if not selected:
+            bt.logging.info(
+                f"Tempo {current_tempo}, Round {round_in_tempo + 1}/{rounds_per_tempo}: "
+                "No miners available for this round"
+            )
+            return []
+
         bt.logging.info(
             f"Tempo {current_tempo}, Round {round_in_tempo + 1}/{rounds_per_tempo}: "
             f"Selected {len(selected)} miners"
