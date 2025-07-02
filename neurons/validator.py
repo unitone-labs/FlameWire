@@ -54,6 +54,8 @@ class Validator(BaseValidatorNeuron):
         else:
             self.miner_table = None
 
+        # Track last tempo logged to wandb
+        self._last_logged_tempo = None
     def get_shuffled_round_robin_miners(self, count=30):
         miners = [n for n in self.metagraph.neurons if n.uid != self.uid and n.validator_trust == 0]
         total_miners = len(miners)
@@ -95,11 +97,14 @@ class Validator(BaseValidatorNeuron):
         end_idx = min(start_idx + count, total_miners)
         
         selected = shuffled_miners[start_idx:end_idx]
-        
-        if len(selected) < count and total_miners >= count:
-            remaining = count - len(selected)
-            selected += shuffled_miners[:remaining]
-        
+
+        if not selected:
+            bt.logging.info(
+                f"Tempo {current_tempo}, Round {round_in_tempo + 1}/{rounds_per_tempo}: "
+                "No miners available for this round"
+            )
+            return []
+
         bt.logging.info(
             f"Tempo {current_tempo}, Round {round_in_tempo + 1}/{rounds_per_tempo}: "
             f"Selected {len(selected)} miners"
@@ -184,9 +189,15 @@ class Validator(BaseValidatorNeuron):
                     rewards.append(score)
                     reward_uids.append(m.get("uid"))
                 
-                if self.wandb and self.miner_table is not None:
+                # Log miner metrics once per tempo at the final round
+                if (
+                    self.wandb
+                    and self.miner_table is not None
+                    and round_in_tempo == rounds_per_tempo - 1
+                    and self._last_logged_tempo != current_tempo
+                ):
                     self.wandb.log({"Miners": self.miner_table}, step=current_block)
-                    # Start a new table for the next round
+                    # Start a new table for the next tempo
                     self.miner_table = self.wandb.Table(
                         columns=[
                             "tempo",
@@ -198,6 +209,7 @@ class Validator(BaseValidatorNeuron):
                             "success_rate",
                         ]
                     )
+                    self._last_logged_tempo = current_tempo
 
                 bt.logging.info(f"Updating scores for uids={reward_uids} with rewards={rewards}")
                 self.update_scores(rewards, reward_uids)
