@@ -58,7 +58,8 @@ class BaseValidatorNeuron(BaseNeuron):
         self.wandb = init_wandb(
             self.config,
             project="FlameWire",
-            entity="unitonelabs"
+            entity="unitonelabs",
+            name=f"validator_{self.uid}_{self.wallet.hotkey.ss58_address}"
         )
 
         # Save a copy of the hotkeys to local memory.
