@@ -10,6 +10,11 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 from bittensor import logging
 from flamewire.api import gateway_rpc_call
+from flamewire.utils.url_sanitizer import (
+    sanitize_error_message,
+    safe_http_error_message,
+    safe_exception_message,
+)
 
 SYSTEM_EVENTS_KEY = "0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7"
 ReferenceBlockData = Tuple[int, str, Optional[str], Optional[dict], int, str]
@@ -62,8 +67,13 @@ def _rpc_call(
 ) -> dict:
     payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
     logging.debug(f"RPC {method} {_shorten(params)}")
-    resp = session.post(url, json=payload, timeout=timeout)
-    resp.raise_for_status()
+    try:
+        resp = session.post(url, json=payload, timeout=timeout)
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        raise RuntimeError(safe_http_error_message(resp, e)) from None
+    except Exception as e:
+        raise RuntimeError(safe_exception_message(e)) from None
     data = resp.json()
     logging.debug(_shorten(data))
     return data
@@ -199,7 +209,7 @@ def _test_once(
             ok, rt_storage = _storage_ok(session, gateway_url, miner, ref_hash, events, metadata, api_key)
             total_response_time_ms += rt_storage
         except Exception as e:
-            logging.warning(f"Storage check error {num} {e}")
+            logging.warning(f"Storage check error {num} {safe_exception_message(e)}")
             ok = False
         res.storage_state_checks.append(StateCheckResult(success=ok, data_matches=ok))
         res.passed_all_checks &= ok
@@ -207,7 +217,7 @@ def _test_once(
             actual_hash, rt_hash = gateway_rpc_call(session, gateway_url, "chain_getBlockHash", [num], miner, api_key)
             total_response_time_ms += rt_hash
         except Exception as e:
-            logging.warning(f"BlockHash error {num} {e}")
+            logging.warning(f"BlockHash error {num} {safe_exception_message(e)}")
             actual_hash = None
         blk_res = BlockCheckResult()
         if actual_hash == ref_hash:
@@ -223,7 +233,7 @@ def _test_once(
                         if len(ext) >= 36 and ext[0] & 0x80 and ext[4:36].hex() == sender_pk:
                             blk_res.extrinsic_check = True
             except Exception as e:
-                logging.warning(f"Block RPC error {num} {e}")
+                logging.warning(f"Block RPC error {num} {safe_exception_message(e)}")
         if not blk_res.block_hash_check:
             blk_res.error_message = f"Block hash mismatch {num}"
             res.errors.append(blk_res.error_message)
