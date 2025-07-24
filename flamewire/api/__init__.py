@@ -2,7 +2,6 @@ import requests
 from typing import Any, Dict, List
 
 from flamewire.utils.url_sanitizer import (
-    sanitize_error_message,
     safe_http_error_message,
     safe_exception_message,
 )
@@ -76,3 +75,7 @@ def register_miner(register_url: str, payload: Dict[str, Any]) -> Dict[str, Any]
         raise RuntimeError(safe_exception_message(e)) from None
 
     return resp.json()
+
+def unregister_miner(register_url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    resp = requests.post(register_url, json=payload, timeout=10)
+    resp.raise_for_status()

@@ -5,7 +5,7 @@ import bittensor
 import sys
 import json
 from urllib.parse import urlparse
-from flamewire.api import register_miner
+from flamewire.api import unregister_miner
 from loguru import logger
 
 logger.remove()
@@ -75,10 +75,11 @@ def main():
 
     payload = {
         "hotkey": wallet.hotkey.ss58_address,
-        "uid": uid
+        "uid": uid,
+        "signature": signature,
     }
     try:
-        data = register_miner(REGISTER_URL, payload)
+        unregister_miner(REGISTER_URL, payload)
         logger.success("Unregistration successful!")
         
     except Exception as e:
