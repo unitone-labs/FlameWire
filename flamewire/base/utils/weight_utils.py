@@ -57,7 +57,9 @@ def normalize_max_weight(x: np.ndarray, limit: float = 0.1) -> np.ndarray:
 
 
 def convert_weights_and_uids_for_emit(
-    uids: np.ndarray, weights: np.ndarray
+    uids: np.ndarray,
+    weights: np.ndarray,
+    preserve_magnitude: bool = False,
 ) -> Tuple[List[int], List[int]]:
     r"""Converts weights into integer u32 representation that sum to MAX_INT_WEIGHT.
     Args:
@@ -101,6 +103,19 @@ def convert_weights_and_uids_for_emit(
                 len(uids), len(weights)
             )
         )
+    if preserve_magnitude:
+        bittensor.logging.debug("preserving magnitude for weight emission")
+        weight_vals: List[int] = []
+        weight_uids: List[int] = []
+        for weight_i, uid_i in zip(weights, uids):
+            clamped_weight = max(0.0, min(float(weight_i), 1.0))
+            uint16_val = round(clamped_weight * int(U16_MAX))
+            if uint16_val != 0:
+                weight_vals.append(uint16_val)
+                weight_uids.append(int(uid_i))
+        bittensor.logging.debug(f"final params: {weight_uids} : {weight_vals}")
+        return weight_uids, weight_vals
+
     if np.sum(weights) == 0:
         bittensor.logging.debug("nothing to set on chain")
         return [], []  # Nothing to set on chain.
@@ -135,6 +150,7 @@ def process_weights_for_netuid(
     subtensor: "bittensor.subtensor",
     metagraph: "bittensor.metagraph" = None,
     exclude_quantile: int = 0,
+    enforce_limits: bool = True,
 ) -> Union[
     tuple[
         ndarray[Any, dtype[Any]],
@@ -162,6 +178,10 @@ def process_weights_for_netuid(
     # Cast weights to floats.
     if not isinstance(weights, np.ndarray) or weights.dtype != np.float32:
         weights = weights.astype(np.float32)
+
+    if not enforce_limits:
+        bittensor.logging.debug("enforce_limits disabled; returning raw weights")
+        return uids, weights
 
     # Network configuration parameters from an subtensor.
     # These parameters determine the range of acceptable weights for each neuron.
