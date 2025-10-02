@@ -213,7 +213,7 @@ class Validator(BaseValidatorNeuron):
 
                 bt.logging.info(f"Updating scores for uids={reward_uids} with rewards={rewards}")
                 self.update_scores(rewards, reward_uids)
-                bt.logging.info(f"New moving average scores: {self.scores}")
+                bt.logging.info(f"Updated scores: {self.scores}")
                 
             except Exception as e:
                 bt.logging.error(f"Failed to fetch or update scores: {e}")

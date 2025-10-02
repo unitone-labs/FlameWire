@@ -236,7 +236,7 @@ class BaseValidatorNeuron(BaseNeuron):
             bt.logging.error("set_weights failed", msg)
 
     def resync_metagraph(self):
-        """Resyncs the metagraph and updates the hotkeys and moving averages based on the new metagraph."""
+        """Resyncs the metagraph and updates cached hotkeys and scores to match."""
         bt.logging.info("resync_metagraph()")
 
         # Copies state of metagraph before syncing.
@@ -250,7 +250,7 @@ class BaseValidatorNeuron(BaseNeuron):
             return
 
         bt.logging.info(
-            "Metagraph updated, re-syncing hotkeys, dendrite pool and moving averages"
+            "Metagraph updated, re-syncing hotkeys, dendrite pool and scores"
         )
         # Zero out all hotkeys that have been replaced.
         for uid, hotkey in enumerate(self.hotkeys):
@@ -258,19 +258,19 @@ class BaseValidatorNeuron(BaseNeuron):
                 self.scores[uid] = 0  # hotkey has been replaced
 
         # Check to see if the metagraph has changed size.
-        # If so, we need to add new hotkeys and moving averages.
+        # If so, we need to add new hotkeys and ensure the score array matches.
         if len(self.hotkeys) < len(self.metagraph.hotkeys):
-            # Update the size of the moving average scores.
-            new_moving_average = np.zeros((self.metagraph.n))
+            # Expand scores to cover the new metagraph size while preserving existing values.
+            new_scores = np.zeros((self.metagraph.n))
             min_len = min(len(self.hotkeys), len(self.scores))
-            new_moving_average[:min_len] = self.scores[:min_len]
-            self.scores = new_moving_average
+            new_scores[:min_len] = self.scores[:min_len]
+            self.scores = new_scores
 
         # Update the hotkeys.
         self.hotkeys = copy.deepcopy(self.metagraph.hotkeys)
 
     def update_scores(self, rewards: np.ndarray, uids: List[int]):
-        """Performs exponential moving average on the scores based on the rewards received from the miners."""
+        """Updates stored scores to match the latest rewards received from miners."""
 
         # Check if rewards contains NaN values.
         if np.isnan(rewards).any():
@@ -278,14 +278,14 @@ class BaseValidatorNeuron(BaseNeuron):
             # Replace any NaN values in rewards with 0.
             rewards = np.nan_to_num(rewards, nan=0)
 
-        # Ensure rewards is a numpy array.
-        rewards = np.asarray(rewards)
+        # Ensure rewards is a numpy array with matching dtype.
+        rewards = np.asarray(rewards, dtype=np.float32)
 
         # Check if `uids` is already a numpy array and copy it to avoid the warning.
         if isinstance(uids, np.ndarray):
-            uids_array = uids.copy()
+            uids_array = uids.astype(np.int64, copy=True)
         else:
-            uids_array = np.array(uids)
+            uids_array = np.asarray(uids, dtype=np.int64)
 
         # Handle edge case: If either rewards or uids_array is empty.
         if rewards.size == 0 or uids_array.size == 0:
@@ -302,19 +302,11 @@ class BaseValidatorNeuron(BaseNeuron):
                 f"cannot be broadcast to uids array of shape {uids_array.shape}"
             )
 
-        # Compute forward pass rewards, assumes uids are mutually exclusive.
-        # shape: [ metagraph.n ]
-        scattered_rewards: np.ndarray = np.zeros_like(self.scores)
-        scattered_rewards[uids_array] = rewards
-        bt.logging.debug(f"Scattered rewards: {rewards}")
-
-        # Update scores with rewards produced by this step.
-        # shape: [ metagraph.n ]
-        alpha: float = self.config.neuron.moving_average_alpha
-        self.scores: np.ndarray = (
-            alpha * scattered_rewards + (1 - alpha) * self.scores
+        # Update the tracked scores in-place.
+        self.scores[uids_array] = rewards
+        bt.logging.debug(
+            f"Updated scores for uids={uids_array.tolist()} rewards={rewards.tolist()}"
         )
-        bt.logging.debug(f"Updated moving avg scores: {self.scores}")
 
     def save_state(self):
         """Saves the state of the validator to a file."""
