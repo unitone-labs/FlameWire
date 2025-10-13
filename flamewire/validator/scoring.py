@@ -40,6 +40,8 @@ class MinerScorer:
         else:
             avg_time = 0.0
         speed_score = max(0.0, min(1.0, (3.0 - avg_time) / (3.0 - 0.5)))
+        if success_rate <= 0.0:
+            speed_score = 0.0
         
         return success_rate, avg_time, speed_score
 

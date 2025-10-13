@@ -209,7 +209,9 @@ def _test_once(
             ok, rt_storage = _storage_ok(session, gateway_url, miner, ref_hash, events, metadata, api_key)
             total_response_time_ms += rt_storage
         except Exception as e:
-            logging.warning(f"Storage check error {num} {safe_exception_message(e)}")
+            msg = f"Storage check error {num} {safe_exception_message(e)}"
+            logging.warning(msg)
+            res.errors.append(msg)
             ok = False
         res.storage_state_checks.append(StateCheckResult(success=ok, data_matches=ok))
         res.passed_all_checks &= ok
@@ -217,7 +219,9 @@ def _test_once(
             actual_hash, rt_hash = gateway_rpc_call(session, gateway_url, "chain_getBlockHash", [num], miner, api_key)
             total_response_time_ms += rt_hash
         except Exception as e:
-            logging.warning(f"BlockHash error {num} {safe_exception_message(e)}")
+            msg = f"BlockHash error {num} {safe_exception_message(e)}"
+            logging.warning(msg)
+            res.errors.append(msg)
             actual_hash = None
         blk_res = BlockCheckResult()
         if actual_hash == ref_hash:

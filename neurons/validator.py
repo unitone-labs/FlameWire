@@ -145,8 +145,9 @@ class Validator(BaseValidatorNeuron):
             {
                 "uid": r.uid,
                 "hotkey": r.hotkey,
-                "success": r.overall_status_passed,
+                "success": bool(r.overall_status_passed),
                 "duration": r.duration,
+                "error_details": r.error_details,
             }
             for r in results
         ]
@@ -160,17 +161,52 @@ class Validator(BaseValidatorNeuron):
         else:
             try:
                 miners = get_validator_nodes(self.config.gateway_url, self.config.api_key, uids)
+                miners_by_uid = {
+                    m.get("uid"): m
+                    for m in miners
+                    if isinstance(m, dict) and m.get("uid") is not None
+                }
                 scorer = MinerScorer()
                 rewards = []
                 reward_uids = []
-                
-                for m in miners:
-                    last_checks = m.get("last_n_checks", [])
-                    last_times = m.get("last_n_response_times", [])
+
+                for res in results:
+                    miner_record = miners_by_uid.get(res.uid)
+                    if miner_record is None:
+                        fallback_checks = [bool(res.overall_status_passed)]
+                        fallback_times = [res.duration] if res.duration is not None else []
+                        miner_record = {
+                            "uid": res.uid,
+                            "hotkey": res.hotkey,
+                            "last_n_checks": fallback_checks,
+                            "last_n_response_times": fallback_times,
+                        }
+                        if res.error_details:
+                            miner_record["last_error"] = res.error_details
+                        miners_by_uid[res.uid] = miner_record
+                        bt.logging.debug(
+                            f"Miner {res.uid}: gateway history missing, using fallback with current result only."
+                        )
+
+                    raw_checks = miner_record.get("last_n_checks", [])
+                    last_checks = [bool(x) for x in raw_checks if isinstance(x, (bool, int))]
+                    if not last_checks and raw_checks:
+                        bt.logging.debug(
+                            f"Miner {res.uid}: ignoring non-boolean last_n_checks values {raw_checks}"
+                        )
+                    raw_times = miner_record.get("last_n_response_times", [])
+                    last_times = [float(t) for t in raw_times if isinstance(t, (int, float))]
+                    if not last_times and raw_times:
+                        bt.logging.debug(
+                            f"Miner {res.uid}: ignoring non-numeric last_n_response_times values {raw_times}"
+                        )
+                    if not last_times and res.duration is not None:
+                        last_times = [float(res.duration)]
+
                     score, success_rate, avg_time, speed_score = scorer.score_with_metrics(last_checks, last_times)
 
                     bt.logging.info(
-                        f"Miner {m.get('uid')}: avg_time={avg_time:.2f}s, "
+                        f"Miner {res.uid}: avg_time={avg_time:.2f}s, "
                         f"success_rate={success_rate:.2f}, speed_score={speed_score:.2f}, "
                         f"score={score:.4f}"
                     )
@@ -179,7 +215,7 @@ class Validator(BaseValidatorNeuron):
                         self.miner_table.add_data(
                             current_tempo,
                             round_in_tempo,
-                            m.get("uid"),
+                            res.uid,
                             score,
                             speed_score,
                             avg_time,
@@ -187,7 +223,7 @@ class Validator(BaseValidatorNeuron):
                         )
 
                     rewards.append(score)
-                    reward_uids.append(m.get("uid"))
+                    reward_uids.append(res.uid)
                 
                 # Log miner metrics once per tempo at the final round
                 if (
@@ -213,7 +249,7 @@ class Validator(BaseValidatorNeuron):
 
                 bt.logging.info(f"Updating scores for uids={reward_uids} with rewards={rewards}")
                 self.update_scores(rewards, reward_uids)
-                bt.logging.info(f"Updated scores: {self.scores}")
+                bt.logging.info(f"New moving average scores: {self.scores}")
                 
             except Exception as e:
                 bt.logging.error(f"Failed to fetch or update scores: {e}")
