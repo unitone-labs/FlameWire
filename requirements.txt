@@ -1,5 +1,5 @@
-loguru>=0.7.3
-bittensor>=9.6.1
-requests>=2.0.0
-numpy>=1.0.0
-wandb>=0.16.6
+bittensor>=10.0.0
+requests>=2.32.5
+numpy>=2.3.5
+wandb>=0.23.1
+xxhash>=3.6.0

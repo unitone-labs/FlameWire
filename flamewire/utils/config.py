@@ -1,23 +1,23 @@
 # The MIT License (MIT)
 # Copyright © 2023 Yuma Rao
 # Copyright © 2023 Opentensor Foundation
+# Copyright © 2025 UnitOne Labs
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
-# documentation files (the “Software”), to deal in the Software without restriction, including without limitation
+# documentation files (the "Software"), to deal in the Software without restriction, including without limitation
 # the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
 # and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
 # The above copyright notice and this permission notice shall be included in all copies or substantial portions of
 # the Software.
 
-# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
 # THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
 # THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
 import os
-import subprocess
 import argparse
 import bittensor as bt
 from .logging import setup_events_logger
@@ -38,13 +38,14 @@ def load_env(env_path: str = ".env"):
     except Exception as e:
         bt.logging.warning(f"Failed to load {env_path}: {e}")
 
+
 def check_config(cls, config: "bt.Config"):
     r"""Checks/validates the config namespace object."""
     bt.logging.check_config(config)
 
     full_path = os.path.expanduser(
         "{}/{}/{}/netuid{}/{}".format(
-            config.logging.logging_dir,  
+            config.logging.logging_dir,
             config.wallet.name,
             config.wallet.hotkey,
             config.netuid,
@@ -79,13 +80,6 @@ def add_args(cls, parser):
     )
 
     parser.add_argument(
-        "--neuron.block_per_tempo",
-        type=int,
-        help="The number of blocks per tempo.",
-        default=360,
-    )
-
-    parser.add_argument(
         "--neuron.events_retention_size",
         type=str,
         help="Events retention size.",
@@ -96,6 +90,13 @@ def add_args(cls, parser):
         "--neuron.dont_save_events",
         action="store_true",
         help="If set, we dont save events to a log file.",
+        default=False,
+    )
+
+    parser.add_argument(
+        "--neuron.disable_set_weights",
+        action="store_true",
+        help="Disables setting weights.",
         default=False,
     )
 
@@ -120,13 +121,14 @@ def add_args(cls, parser):
         default="",
     )
 
+
 def add_validator_args(cls, parser):
     """Add validator specific arguments to the parser."""
 
     parser.add_argument(
         "--neuron.name",
         type=str,
-        help="Trials for this neuron go in neuron.root / (wallet_cold - wallet_hot) / neuron.name. ",
+        help="Trials for this neuron go in neuron.root / (wallet_cold - wallet_hot) / neuron.name.",
         default="validator",
     )
 
@@ -138,43 +140,37 @@ def add_validator_args(cls, parser):
     )
 
     parser.add_argument(
-        "--neuron.num_concurrent_verifications",
-        type=int,
-        help="The number of concurrent verifications running at any time.",
-        default=1,
+        "--gateway.url",
+        type=str,
+        help="The gateway API URL.",
+        default="https://gateway-dev.flamewire.io",
     )
 
     parser.add_argument(
-        "--rpc_url",
+        "--validator.api_key",
         type=str,
-        help="The RPC URL for the validator.",
-        default="http://localhost:9944",
-    )
-
-    parser.add_argument(
-        "--api_key",
-        type=str,
-        help="The API key for the validator.",
+        help="The validator API key for gateway authentication.",
         default="",
     )
 
     parser.add_argument(
-        "--gateway_url",
-        type=str,
-        help="The gateway URL.",
-        default="https://gateway.flamewire.io",
+        "--validator.max_workers",
+        type=int,
+        help="Maximum number of concurrent workers for node verification.",
+        default=32,
     )
 
     parser.add_argument(
-        "--neuron.vpermit_tao_limit",
-        type=int,
-        help="The maximum number of TAO allowed to query a validator with a vpermit.",
-        default=4096,
+        "--validator.ema_alpha",
+        type=float,
+        help="EMA smoothing factor (0-1). Higher = faster adaptation, lower = more stable.",
+        default=0.1,
     )
+
 
 def config(cls):
     """
-    Returns the configuration object specific to this miner or validator after adding relevant arguments.
+    Returns the configuration object specific to this validator after adding relevant arguments.
     """
     load_env()
     parser = argparse.ArgumentParser()
@@ -186,12 +182,20 @@ def config(cls):
 
     cfg = bt.config(parser)
 
-    # Override sensitive settings from environment variables if present
-    cfg.rpc_url = os.getenv("RPC_URL", cfg.rpc_url)
-    cfg.api_key = os.getenv("API_KEY", cfg.api_key)
-    cfg.gateway_url = os.getenv("GATEWAY_URL", cfg.gateway_url)
+    # Override settings from environment variables if present
     cfg.wallet.name = os.getenv("WALLET_NAME", cfg.wallet.name)
     cfg.wallet.hotkey = os.getenv("WALLET_HOTKEY", cfg.wallet.hotkey)
     cfg.subtensor.network = os.getenv("SUBTENSOR_NETWORK", cfg.subtensor.network)
+
+    # Gateway and validator settings
+    if cfg.gateway is None:
+        cfg.gateway = bt.config()
+    cfg.gateway.url = os.getenv("GATEWAY_URL", getattr(cfg.gateway, "url", "https://gateway-dev.flamewire.io"))
+
+    if cfg.validator is None:
+        cfg.validator = bt.config()
+    cfg.validator.api_key = os.getenv("VALIDATOR_API_KEY", getattr(cfg.validator, "api_key", ""))
+    cfg.validator.max_workers = int(os.getenv("VALIDATOR_MAX_WORKERS", getattr(cfg.validator, "max_workers", 32)))
+    cfg.validator.ema_alpha = float(os.getenv("VALIDATOR_EMA_ALPHA", getattr(cfg.validator, "ema_alpha", 0.1)))
 
     return cfg

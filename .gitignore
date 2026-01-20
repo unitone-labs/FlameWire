@@ -3,3 +3,4 @@ __pycache__
 miner.json
 state.npz
 .env
+wandb/

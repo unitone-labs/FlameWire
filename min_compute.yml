@@ -1,82 +1,7 @@
-# Use this document to specify the minimum compute requirements.
-# This document will be used to generate a list of recommended hardware for your subnet.
-
-# This is intended to give a rough estimate of the minimum requirements
-# so that the user can make an informed decision about whether or not
-# they want to run a miner or validator on their machine.
-
-# NOTE: Specification for miners may be different from validators
-
-version: '1.0' # update this version key as needed, ideally should match your release version
+version: '1.0'
 
 compute_spec:
   miner:
-    ethereum_geth:
-      description: "Ethereum Geth Archive Node (--gcmode=archive)"
-      cpu:
-        min_cores: 16
-        min_speed: 3.0
-        recommended_cores: 24
-        recommended_speed: 3.5
-        architecture: "x86_64"
-      memory:
-        min_ram: 64
-        recommended_ram: 96
-        min_swap: 8
-        recommended_swap: 16
-        ram_type: "DDR4"
-      storage:
-        min_space: 8000
-        recommended_space: 10000
-        type: "NVMe SSD"
-        min_iops: 100000
-        recommended_iops: 200000
-        notes: "Highest disk-I/O and RAM footprint; needed for legacy debug traces"
-
-    ethereum_erigon:
-      description: "Ethereum Erigon Archive Node"
-      cpu:
-        min_cores: 8
-        min_speed: 3.0
-        recommended_cores: 12
-        recommended_speed: 3.5
-        architecture: "x86_64"
-      memory:
-        min_ram: 32
-        recommended_ram: 48
-        min_swap: 8
-        recommended_swap: 16
-        ram_type: "DDR4"
-      storage:
-        min_space: 4000
-        recommended_space: 5000
-        type: "NVMe SSD"
-        min_iops: 100000
-        recommended_iops: 150000
-        notes: "Table-oriented storage ≈50% smaller than Geth; good balance of speed and cost"
-
-    sui:
-      description: "Sui Full Node"
-      cpu:
-        min_cores: 16
-        min_speed: 3.0
-        recommended_cores: 24
-        recommended_speed: 3.5
-        architecture: "x86_64"
-      memory:
-        min_ram: 128
-        recommended_ram: 192
-        min_swap: 16
-        recommended_swap: 32
-        ram_type: "DDR4"
-      storage:
-        min_space: 4000
-        recommended_space: 5000
-        type: "NVMe SSD"
-        min_iops: 100000
-        recommended_iops: 150000
-        notes: "Indexer doubles IOPS; NVMe essential for checkpoint queries"
-
     bittensor:
       description: "Bittensor Archive Node"
       cpu:
@@ -87,17 +12,16 @@ compute_spec:
         architecture: "x86_64"
       memory:
         min_ram: 32
-        recommended_ram: 48
+        recommended_ram: 64
         min_swap: 8
         recommended_swap: 16
         ram_type: "DDR4"
       storage:
-        min_space: 2000
-        recommended_space: 3000
+        min_space: 4000
+        recommended_space: 8000
         type: "NVMe SSD"
         min_iops: 50000
         recommended_iops: 100000
-        notes: "Runs performance scoring and gossip; modest disk but steady network traffic"
 
   validator:
     cpu:
@@ -110,21 +34,21 @@ compute_spec:
       min_ram: 8
       recommended_ram: 16
     storage:
-      min_space: 20 # 20G
-      recommended_space: 50 # 50G
+      min_space: 20
+      recommended_space: 50
 
 
 network_spec:
   bandwidth:
     ethereum:
-      download: 1000  # 1 Gbps
-      upload: 1000    # 1 Gbps
+      download: 1000
+      upload: 1000
     sui:
-      download: 500   # 500 Mbps
-      upload: 500     # 500 Mbps
+      download: 500
+      upload: 500
     bittensor:
-      download: 500   # 500 Mbps
-      upload: 500     # 500 Mbps
+      download: 500
+      upload: 500
 
 
 os:
