@@ -1,6 +1,7 @@
 # The MIT License (MIT)
 # Copyright © 2025 UnitOne Labs
 
+import datetime
 import os
 from typing import Any, Optional
 
@@ -80,6 +81,10 @@ def init_wandb(config, hotkey: str, uid: int, netuid: int, **kwargs) -> Any:
     wandb.define_metric("validator/step")
     wandb.define_metric("*", step_metric="validator/step")
 
+    # Attach error tracking state to wandb instance
+    wandb._error_rows = []
+    wandb._error_count = 0
+
     return wandb
 
 
@@ -126,19 +131,26 @@ def log_error(wandb_instance, error_type: str, message: str, step: Optional[int]
         return
 
     try:
-        metrics = {
-            "errors/count": 1,
-            "errors/type": error_type,
-        }
-        if step is not None:
-            metrics["validator/step"] = step
-        wandb_instance.log(metrics)
-        wandb_instance.alert(
-            title=f"Validator Error: {error_type}",
-            text=message,
-            level=wandb.AlertLevel.ERROR,
+        wandb_instance._error_count += 1
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Add to error history
+        wandb_instance._error_rows.append([step or 0, timestamp, error_type, message])
+
+        # Create fresh table with all errors so far
+        table = wandb.Table(
+            columns=["step", "timestamp", "error_type", "message"],
+            data=wandb_instance._error_rows
         )
-        bt.logging.debug(f"Logged error to wandb: {error_type}")
+
+        # Log counter with step, but table separately without step
+        if step is not None:
+            wandb_instance.log({"validator/step": step, "errors/total": wandb_instance._error_count})
+
+        # Log table separately (no step = always shows latest)
+        wandb_instance.log({"errors/history": table})
+
+        bt.logging.debug(f"Logged error to wandb: {error_type} (total: {wandb_instance._error_count})")
     except Exception as e:
         bt.logging.error(f"Failed to log error to wandb: {e}")
 
