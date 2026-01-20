@@ -25,16 +25,15 @@ import bittensor as bt
 
 from flamewire.base.validator import BaseValidatorNeuron
 from flamewire.gateway import GatewayClient, RpcClient
+from flamewire.gateway.types import LatencyStats
 from flamewire.utils.metagraph import get_miner_hotkeys
 from flamewire.utils.helpers import batched, build_miner_nodes, get_random_blocks, verify_all_nodes
+from flamewire.utils.wandb_logging import log_verification_metrics
 
 
 class Validator(BaseValidatorNeuron):
     def __init__(self, config=None):
         super(Validator, self).__init__(config=config)
-
-        bt.logging.info("load_state()")
-        self.load_state()
 
         # Initialize gateway client
         self.gateway = GatewayClient(
@@ -47,9 +46,7 @@ class Validator(BaseValidatorNeuron):
         self.rpc = RpcClient(self.gateway.public_rpc_call)
 
     async def verify(self):
-        """
-        Lookup nodes for all miners and fetch verification statistics.
-        """
+        """Lookup nodes for all miners and verify them."""
         miner_hotkeys = get_miner_hotkeys(self.metagraph, self.uid)
         if not miner_hotkeys:
             return
@@ -95,6 +92,22 @@ class Validator(BaseValidatorNeuron):
             max_workers=self.config.validator.max_workers,
         )
         bt.logging.info(f"Verification complete: {verified_count} passed, {failed_count} failed")
+
+        latencies = [n.avg_latency_ms for n in miner_nodes if n.avg_latency_ms is not None]
+        latency_stats = LatencyStats.from_latencies(latencies)
+        unique_miners = set(n.miner_hotkey for n in miner_nodes)
+
+        log_verification_metrics(
+            self.wandb,
+            step=self.step,
+            block=self.block,
+            verified_count=verified_count,
+            failed_count=failed_count,
+            total_nodes=len(miner_nodes),
+            total_miners=len(unique_miners),
+            latency_stats=latency_stats,
+        )
+
 
 if __name__ == "__main__":
     with Validator() as validator:

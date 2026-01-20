@@ -95,6 +95,25 @@ class StatisticsResponse:
 
 
 @dataclass
+class LatencyStats:
+    """Latency statistics."""
+    min_ms: float
+    max_ms: float
+    avg_ms: float
+
+    @classmethod
+    def from_latencies(cls, latencies: List[float]) -> Optional["LatencyStats"]:
+        """Create from list of latency values."""
+        if not latencies:
+            return None
+        return cls(
+            min_ms=min(latencies),
+            max_ms=max(latencies),
+            avg_ms=sum(latencies) / len(latencies),
+        )
+
+
+@dataclass
 class RPCError:
     """JSON-RPC error."""
     code: int

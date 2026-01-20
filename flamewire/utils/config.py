@@ -101,13 +101,6 @@ def add_args(cls, parser):
     )
 
     parser.add_argument(
-        "--wandb.off",
-        action="store_true",
-        help="Turn off wandb.",
-        default=False,
-    )
-
-    parser.add_argument(
         "--wandb.offline",
         action="store_true",
         help="Runs wandb in offline mode.",
@@ -167,6 +160,13 @@ def add_validator_args(cls, parser):
         default=0.1,
     )
 
+    parser.add_argument(
+        "--validator.verification_interval",
+        type=int,
+        help="Interval between verification cycles in seconds.",
+        default=480,
+    )
+
 
 def config(cls):
     """
@@ -174,13 +174,13 @@ def config(cls):
     """
     load_env()
     parser = argparse.ArgumentParser()
-    bt.wallet.add_args(parser)
-    bt.subtensor.add_args(parser)
+    bt.Wallet.add_args(parser)
+    bt.Subtensor.add_args(parser)
     bt.logging.add_args(parser)
-    bt.axon.add_args(parser)
+    bt.Axon.add_args(parser)
     cls.add_args(parser)
 
-    cfg = bt.config(parser)
+    cfg = bt.Config(parser)
 
     # Override settings from environment variables if present
     cfg.wallet.name = os.getenv("WALLET_NAME", cfg.wallet.name)
@@ -189,13 +189,14 @@ def config(cls):
 
     # Gateway and validator settings
     if cfg.gateway is None:
-        cfg.gateway = bt.config()
+        cfg.gateway = bt.Config()
     cfg.gateway.url = os.getenv("GATEWAY_URL", getattr(cfg.gateway, "url", "https://gateway-dev.flamewire.io"))
 
     if cfg.validator is None:
-        cfg.validator = bt.config()
+        cfg.validator = bt.Config()
     cfg.validator.api_key = os.getenv("VALIDATOR_API_KEY", getattr(cfg.validator, "api_key", ""))
     cfg.validator.max_workers = int(os.getenv("VALIDATOR_MAX_WORKERS", getattr(cfg.validator, "max_workers", 32)))
     cfg.validator.ema_alpha = float(os.getenv("VALIDATOR_EMA_ALPHA", getattr(cfg.validator, "ema_alpha", 0.1)))
+    cfg.validator.verification_interval = int(os.getenv("VALIDATOR_VERIFICATION_INTERVAL", getattr(cfg.validator, "verification_interval", 480)))
 
     return cfg
