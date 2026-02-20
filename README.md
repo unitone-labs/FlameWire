@@ -95,112 +95,156 @@ To register as a miner or validator on FlameWire subnet, follow these steps:
    ```
 ### Miners 
 
-After registering your neuron, miners need to set up and run the gateway service:
+FlameWire miner node registration follows the dashboard-based flow in docs:
+https://docs.flamewire.io/docs/miners/registration
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/unitone-labs/FlameWire
-   cd FlameWire
+Supported chain:
+- Bittensor nodes only (Ethereum and Sui support are planned).
+
+Prerequisites:
+- A full-archive Bittensor node running and fully synced
+- Node reachable from the internet
+- A wallet with a registered hotkey on subnet 97
+- `btcli` installed
+
+Node configuration requirements:
+- Open ports `9944` (WebSocket RPC) and `30333` (P2P)
+- Start your node with `--rpc-methods=unsafe`
+- Use a `ws://` or `wss://` endpoint URL
+
+Registration steps:
+1. Open the FlameWire app and sign in:
+   ```text
+   https://app.flamewire.io/login?redirect=%2Fnodes%3Fregister%3Dtrue
    ```
-
-2. **Install Dependencies**
+2. In the registration modal, enter your node URL (example `ws://your_node_ip:9944`).
+3. Sign the registration message with your hotkey:
    ```bash
-   pip install -r requirements.txt
-   pip install -e .
+   btcli w sign --wallet.name [name] --wallet.hotkey [hotkey] --use-hotkey --message register:[url]
    ```
+4. Paste in the modal:
+   - `Hotkey`: your SS58 hotkey address (starts with `5`)
+   - `Signature`: output from the `btcli w sign` command
+5. Click `+ Register Node`.
 
+Example sign command:
+```bash
+btcli w sign --wallet.name my_wallet --wallet.hotkey my_hotkey --use-hotkey --message register:ws://your_node_ip:9944
+```
 
-3. **Register Gateway**
-   ```bash
-   python3 gateway_register.py
-   ```
-    Enter wallets path (default: ~/.bittensor/wallets): 
-    Enter wallet name (default: default): 
-    Enter hotkey name (default: default): 
-    Enter network (default: finney):
-    Enter Bittensor node URL:
+After registration:
+- FlameWire runs automatic checks for connectivity, sync status, and archive data.
+- In the dashboard, `Healthy` means the node is ready to receive traffic.
 
+Common issues:
+- Node not reachable: confirm ports `9944` and `30333` are open.
+- Invalid signature: confirm wallet/hotkey names and `--use-hotkey`.
+- Node not syncing: wait until full sync completes.
+- WebSocket connection failed: confirm `--rpc-methods=unsafe` is enabled.
 
-The gateway registration process will:
-- Register your services with the flamewire gateway
-- Begin serving RPC/API requests
-- Start earning rewards based on performance
-
-Monitor your miner's performance using:
+Monitor your miner status from the FlameWire dashboard and subnet metagraph:
 ```bash
 btcli subnet metagraph --subtensor.network finney --subnet.netuid 97
 ```
 
 ### Validators
 
-To run a validator on FlameWire subnet, follow these steps:
+Validator guide reference:
+https://docs.flamewire.io/docs/validators/guide
 
-1. **Install Dependencies**
+Validators on FlameWire:
+- Probe miners for uptime, correctness, and latency
+- Aggregate scores into weights
+- Publish weights on-chain using `set_weights`
+
+Getting started:
+1. Install prerequisites (`Python 3.10+`, `Node.js 18+`).
+2. Clone repository:
    ```bash
-   # Install Python dependencies
+   git clone https://github.com/unitone-labs/FlameWire.git
+   cd FlameWire
+   ```
+3. Create and activate virtual environment:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+4. Install dependencies:
+   ```bash
    pip install -r requirements.txt
    pip install -e .
-
-   # Install PM2 for process management
    npm install -g pm2
    ```
-
-2. **Get Validator API Key**
-   - Join our Discord: https://discord.flamewire.io
-   - Request a validator API key from the team
-   - This key is required for validator operations
-
-
-3. **Start Validator**
-   Using PM2 for process management:
-   ```bash
-   # Copy the example environment file and edit with your credentials
-   cp .env.example .env
-   # Start validator with PM2 (values are read from .env)
-    pm2 start neurons/validator.py --name flamewire-validator --interpreter python3 -- \
-      --netuid 97 \
-      --logging.debug
-
-   # Monitor validator
-   pm2 monit
-
-   # View logs
-   pm2 logs flamewire-validator
-
-   # Restart if needed
-   pm2 restart flamewire-validator
+5. Verify validator identity in dashboard:
+   ```text
+   https://app.flamewire.io/validators?verify=true
    ```
-
-5. **Validator Management Commands**
+   Sign command:
    ```bash
-   # Check validator status
+   btcli w sign --wallet.name [name] --wallet.hotkey [hotkey] --use-hotkey --message verify-validator
+   ```
+   Then submit:
+   - Hotkey address (starts with `5`)
+   - Signature output from the command
+6. Create validator API key:
+   ```text
+   https://app.flamewire.io/api-keys?create=true&role=validator
+   ```
+7. Configure environment:
+   ```bash
+   cp .env.example .env
+   ```
+   Required values:
+   - `WALLET_NAME`
+   - `WALLET_HOTKEY`
+   - `SUBTENSOR_NETWORK`
+   - `REFERENCE_RPC_URL` (recommended: your own archive endpoint for truth checks)
+   - `GATEWAY_URL`
+   - `VALIDATOR_API_KEY`
+   - `VALIDATOR_MAX_WORKERS`
+   - `VALIDATOR_EMA_ALPHA`
+   - `VALIDATOR_VERIFICATION_INTERVAL`
+   - `WANDB_API_KEY`
+8. Start validator:
+   ```bash
+   pm2 start neurons/validator.py --name flamewire-validator --interpreter python3
+   ```
+9. Monitor operations:
+   ```bash
+   pm2 monit
+   pm2 logs flamewire-validator
+   pm2 restart flamewire-validator
    pm2 status
-
-   # Stop validator
    pm2 stop flamewire-validator
-
-   # Delete validator from PM2
    pm2 delete flamewire-validator
-
-   # Save PM2 process list
    pm2 save
-
-   # Setup PM2 to start on system boot
    pm2 startup
    ```
 
-Important Notes:
-- The validator API key is required and can be obtained from our Discord
-- RPC_URL can be your own local archive node or any third-party provider
-- Store `WALLET_NAME`, `WALLET_HOTKEY`, `SUBTENSOR_NETWORK`, `RPC_URL`, `API_KEY`, and `WANDB_API_KEY` in a `.env` file
-- Ensure your system has sufficient resources (CPU, RAM, network)
-- Monitor your validator's performance regularly
-- Keep your API key and wallet credentials secure
+Notes:
+- Default verification cycle is 480s (8 minutes).
+- Verifications run in parallel (default workers: 32).
+- Keep wallet credentials and API keys private; never commit `.env`.
 
 ### Evaluation and Rewards
 
-- Validators assign scores and weights to miners  
-- Alpha token rewards are distributed based on performance  
+- Validators assign scores and weights to miners
+- Node score uses weighted performance metrics:
+  - `correctness`: 40% (binary, 0 or 1)
+  - `uptime`: 30% (passed health checks / total checks measured by this validator)
+  - `latency`: 30% (relative response speed measured by this validator)
+- Correctness is zero-tolerance:
+  - Any failed validation check sets correctness to `0` for that node.
+- Miner score uses regional factors:
+  - Regional multiplier: `clamp(33.33% / actual_region_share, 0.5, 2.0)`
+  - Diminishing returns per miner/region: node `N` contributes `node_score * (1/N)`
+  - Diversity bonus: `1.00` (1 region), `1.10` (2 regions), `1.20` (3 regions)
+  - Raw miner score: `(regional_score_us + regional_score_eu + regional_score_as) * diversity_bonus`
+- EMA smoothing:
+  - `ema = alpha * raw + (1 - alpha) * previous_ema`
+  - `alpha = 0.1` by default.
+- Metric and region weights are subnet policy constants in code (not validator `.env` overrides).
+- Final chain weights are distributed pro-rata to miner scores and set after each full verification cycle.
 - User payments re-enter the subnet economy  
 
 ---
@@ -221,5 +265,5 @@ Important Notes:
 - Expansion to additional blockchains  
 - Introduction of chain-specific APIs  
 - Enhanced monitoring and analytics tools  
-- Foundation partnerships for staked-access models  
+- Foundation partnerships 
 - AI-based optimization of request routing  

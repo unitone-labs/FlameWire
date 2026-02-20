@@ -1,17 +1,16 @@
 # The MIT License (MIT)
 # Copyright © 2023 Yuma Rao
-# (UnitOne Labs): Alexander
-# Copyright © 2025 UnitOne Labs
+# Copyright © 2026 UnitOne Labs
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
-# documentation files (the “Software”), to deal in the Software without restriction, including without limitation
+# documentation files (the "Software"), to deal in the Software without restriction, including without limitation
 # the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
 # and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
 # The above copyright notice and this permission notice shall be included in all copies or substantial portions of
 # the Software.
 
-# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
 # THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
 # THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
@@ -21,238 +20,227 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import json
 import time
-import random
-import numpy as np
 import bittensor as bt
+import numpy as np
 
 from flamewire.base.validator import BaseValidatorNeuron
-from flamewire.validator.verify import check_bittensor_nodes
-from flamewire.api import post_node_results, get_validator_nodes
-from flamewire.validator.scoring import MinerScorer
+from flamewire.gateway import GatewayClient, RpcClient, SubtensorRpcTransport
+from flamewire.gateway.types import CheckStats, LatencyStats
+from flamewire.utils.metagraph import get_miner_hotkeys
+from flamewire.utils.helpers import batched, build_miner_nodes, get_random_blocks, verify_all_nodes
+from flamewire.utils.scoring import calculate_node_scores, calculate_miner_scores
+from flamewire.utils.wandb_logging import log_verification_metrics
+
 
 class Validator(BaseValidatorNeuron):
     def __init__(self, config=None):
+        # Local health history measured by this validator only (node_id -> CheckStats).
+        self.local_node_health: dict[str, CheckStats] = {}
+        # Tracks which miner UIDs already have EMA initialized.
+        self.ema_initialized_uids: set[int] = set()
+
         super(Validator, self).__init__(config=config)
 
-        bt.logging.info("load_state()")
-        self.load_state()
-
-        # Initialize wandb table for miner metrics if wandb is enabled.
-        if self.wandb:
-            self.miner_table = self.wandb.Table(
-                columns=[
-                    "tempo",
-                    "round",
-                    "uid",
-                    "score",
-                    "speed_score",
-                    "avg_time",
-                    "success_rate",
-                ]
-            )
-        else:
-            self.miner_table = None
-
-        # Track last tempo logged to wandb
-        self._last_logged_tempo = None
-    def get_shuffled_round_robin_miners(self, count=30):
-        miners = [n for n in self.metagraph.neurons if n.uid != self.uid and n.validator_trust == 0]
-        total_miners = len(miners)
-        
-        if total_miners == 0:
-            return []
-        
-        bt.logging.info(f"miners: {len(miners)}")
-        
-        blocks_per_tempo = self.config.neuron.block_per_tempo
-        rounds_per_tempo = (total_miners + count - 1) // count
-        blocks_per_round = blocks_per_tempo // rounds_per_tempo
-        
-        current_tempo = self.block // blocks_per_tempo
-        blocks_in_tempo = self.block % blocks_per_tempo
-        round_in_tempo = blocks_in_tempo // blocks_per_round
-
-        bt.logging.debug(
-            f"Debug: miners={total_miners}, rounds_per_tempo={rounds_per_tempo}, "
-            f"blocks_per_round={blocks_per_round}, current_block={self.block}, "
-            f"blocks_in_tempo={blocks_in_tempo}, round_in_tempo={round_in_tempo}"
+        # Initialize gateway client
+        self.gateway = GatewayClient(
+            api_key=self.config.validator.api_key,
+            base_url=self.config.gateway.url,
         )
-        
-        if round_in_tempo >= rounds_per_tempo:
-            round_in_tempo = rounds_per_tempo - 1
-        
-        tempo_start_block = current_tempo * blocks_per_tempo
+        bt.logging.info(f"Gateway client initialized: {self.config.gateway.url}")
+
+        # Initialize reference RPC client from validator-controlled endpoint.
+        reference_rpc_url = (
+            getattr(self.config.validator, "reference_rpc_url", "")
+            or self.config.subtensor.network
+        )
+        self.rpc = RpcClient(SubtensorRpcTransport(reference_rpc_url))
+        bt.logging.info(f"Reference RPC initialized: {reference_rpc_url}")
+
+    def _node_health_path(self) -> str:
+        return f"{self.config.neuron.full_path}/node_health_stats.json"
+
+    def load_state(self):
+        super().load_state()
+        path = self._node_health_path()
         try:
-            block_hash = self.subtensor.get_block_hash(max(0, tempo_start_block - 1))
-            seed = int(block_hash[-16:], 16)
-        except:
-            seed = current_tempo
-        
-        rng = random.Random(seed)
-        shuffled_miners = miners.copy()
-        rng.shuffle(shuffled_miners)
-        
-        start_idx = round_in_tempo * count
-        end_idx = min(start_idx + count, total_miners)
-        
-        selected = shuffled_miners[start_idx:end_idx]
+            with open(path) as f:
+                raw = json.load(f)
 
-        if not selected:
-            bt.logging.info(
-                f"Tempo {current_tempo}, Round {round_in_tempo + 1}/{rounds_per_tempo}: "
-                "No miners available for this round"
+            # Backward compatibility with older flat schema.
+            if "node_health" in raw:
+                node_health_raw = raw.get("node_health", {})
+                ema_uids_raw = raw.get("ema_initialized_uids", [])
+            else:
+                node_health_raw = raw
+                ema_uids_raw = []
+
+            self.local_node_health = {
+                node_id: CheckStats(
+                    total=int(stats.get("total", 0)),
+                    passed=int(stats.get("passed", 0)),
+                )
+                for node_id, stats in node_health_raw.items()
+            }
+            self.ema_initialized_uids = {
+                int(uid)
+                for uid in ema_uids_raw
+            }
+            bt.logging.info(f"Loaded local node health from {path}")
+        except FileNotFoundError:
+            bt.logging.info("No local node health state found, starting fresh")
+        except Exception as err:
+            bt.logging.warning(f"Failed to load local node health state: {err}")
+            self.local_node_health = {}
+            self.ema_initialized_uids = set()
+
+    def save_state(self):
+        super().save_state()
+        path = self._node_health_path()
+        try:
+            payload = {
+                "node_health": {
+                    node_id: {"total": stats.total, "passed": stats.passed}
+                    for node_id, stats in self.local_node_health.items()
+                },
+                "ema_initialized_uids": sorted(list(self.ema_initialized_uids)),
+            }
+            with open(path, "w") as f:
+                json.dump(payload, f)
+            bt.logging.debug(f"Saved local node health to {path}")
+        except Exception as err:
+            bt.logging.warning(f"Failed to save local node health state: {err}")
+
+    def _merge_local_health(self, miner_nodes):
+        """Merge cycle health checks into persistent validator-local uptime history."""
+        for node in miner_nodes:
+            cycle = node.health
+            previous = self.local_node_health.get(node.node_id, CheckStats(total=0, passed=0))
+            merged = CheckStats(
+                total=previous.total + cycle.total,
+                passed=previous.passed + cycle.passed,
             )
-            return []
-
-        bt.logging.info(
-            f"Tempo {current_tempo}, Round {round_in_tempo + 1}/{rounds_per_tempo}: "
-            f"Selected {len(selected)} miners"
-        )
-        
-        return selected
+            self.local_node_health[node.node_id] = merged
+            # Use cumulative local stats for uptime scoring.
+            node.health = merged
 
     async def verify(self):
-        bt.logging.info("verify()")
-
-        selected_neurons = self.get_shuffled_round_robin_miners(count=30)
-        current_block = self.block
-        block_per_tempo = self.config.neuron.block_per_tempo
-        current_tempo = current_block // block_per_tempo
-        miners = [n for n in self.metagraph.neurons if n.uid != self.uid and n.validator_trust == 0]
-        rounds_per_tempo = (len(miners) + 30 - 1) // 30 if miners else 1
-        blocks_per_round = block_per_tempo // rounds_per_tempo
-        round_in_tempo = (current_block % block_per_tempo) // blocks_per_round
-        
-        if not selected_neurons:
-            bt.logging.info("No miners to verify in this round")
+        """Lookup nodes for all miners and verify them."""
+        miner_hotkeys = get_miner_hotkeys(self.metagraph, self.uid)
+        if not miner_hotkeys:
             return
-        
-        bt.logging.info(f"Selected {len(selected_neurons)} neurons for verification")
 
-        results = check_bittensor_nodes(
-            rpc_url=self.config.rpc_url,
-            gateway_url=self.config.gateway_url,
-            api_key=self.config.api_key,
-            miners=selected_neurons,
-            num_ref_blocks=3,
-            test_runs=1
+        # Lookup nodes for all miners
+        all_nodes = {}
+        for batch in batched(miner_hotkeys, 100):
+            nodes = self.gateway.lookup_nodes(batch)
+            all_nodes.update(nodes)
+
+        # Build MinerNode array with validator-local health placeholders.
+        miner_nodes = build_miner_nodes(all_nodes)
+
+        # Get current block
+        current_block = self.rpc.get_current_block()
+        bt.logging.info(f"Current block: {current_block}")
+
+        # Get random blocks from each interval
+        old_block, middle_block, new_block = get_random_blocks(current_block)
+        bt.logging.info(f"Random blocks - old: {old_block}, middle: {middle_block}, new: {new_block}")
+
+        # Fetch reference blocks
+        reference_blocks = []
+        for block_num, verification_type in [
+            (old_block, "old"),
+            (middle_block, "middle"),
+            (new_block, "new"),
+        ]:
+            ref_block = self.rpc.get_reference_block(block_num, verification_type)
+            if ref_block:
+                reference_blocks.append(ref_block)
+                bt.logging.info(f"Reference block {verification_type}: #{ref_block.block_number} hash={ref_block.block_hash[:16]}... size={ref_block.events_data_size}")
+
+        if not reference_blocks:
+            bt.logging.error(
+                "No reference blocks available from reference RPC endpoint. "
+                "Check REFERENCE_RPC_URL and ensure it is archive-capable."
+            )
+            return
+
+        # Verify all miner nodes against reference blocks (parallel)
+        bt.logging.info(f"Verifying {len(miner_nodes)} nodes against {len(reference_blocks)} reference blocks (max_workers={self.config.validator.max_workers})...")
+        verified_count, failed_count = verify_all_nodes(
+            miner_nodes,
+            reference_blocks,
+            self.gateway.rpc_call,
+            network_head=current_block,
+            max_workers=self.config.validator.max_workers,
         )
-        
-        uids = [res.uid for res in results]
+        bt.logging.info(f"Verification complete: {verified_count} passed, {failed_count} failed")
 
-        nodes_payload = [
-            {
-                "uid": r.uid,
-                "hotkey": r.hotkey,
-                "success": bool(r.overall_status_passed),
-                "duration": r.duration,
-                "error_details": r.error_details,
-            }
-            for r in results
-        ]
-        
-        try:
-            bt.logging.info(f"POSTing {len(nodes_payload)} node results")
-            post_node_results(self.config.gateway_url, self.config.api_key, nodes_payload)
-            bt.logging.info("Posted node results")
-        except Exception as e:
-            bt.logging.error(f"Failed to post node results: {e}")
+        # Merge cycle measurements into validator-local uptime history.
+        self._merge_local_health(miner_nodes)
+
+        # Calculate performance scores using subnet-level scoring policy constants.
+        node_scores = calculate_node_scores(miner_nodes)
+        miner_scores = calculate_miner_scores(node_scores)
+        score_by_hotkey = {score.miner_hotkey: score.total for score in miner_scores}
+
+        hotkey_to_uid = {hotkey: uid for uid, hotkey in enumerate(self.metagraph.hotkeys)}
+        reward_uids = []
+        reward_values = []
+        for hotkey in miner_hotkeys:
+            uid = hotkey_to_uid.get(hotkey)
+            if uid is None:
+                continue
+            reward_uids.append(uid)
+            reward_values.append(float(score_by_hotkey.get(hotkey, 0.0)))
+
+        if reward_uids:
+            rewards = np.asarray(reward_values, dtype=np.float32)
+            uids = np.asarray(reward_uids, dtype=np.int64)
+
+            # EMA smoothing to avoid abrupt weight shifts between verification rounds.
+            ema_alpha = float(self.config.validator.ema_alpha)
+            previous_scores = self.scores[uids]
+            smoothed_rewards = rewards.copy()
+            for idx, uid in enumerate(uids):
+                uid_int = int(uid)
+                if uid_int in self.ema_initialized_uids:
+                    smoothed_rewards[idx] = (
+                        ((1.0 - ema_alpha) * previous_scores[idx])
+                        + (ema_alpha * rewards[idx])
+                    )
+                else:
+                    smoothed_rewards[idx] = rewards[idx]
+
+            self.update_scores(smoothed_rewards, uids)
+            for uid in uids:
+                self.ema_initialized_uids.add(int(uid))
+            bt.logging.info(f"Updated rewards for {len(reward_uids)} miners (ema_alpha={ema_alpha})")
+
+            # Set weights immediately after completing a full scoring cycle.
+            if not self.config.neuron.disable_set_weights:
+                self.set_weights()
+                bt.logging.info("Set weights after full verification cycle")
         else:
-            try:
-                miners = get_validator_nodes(self.config.gateway_url, self.config.api_key, uids)
-                miners_by_uid = {
-                    m.get("uid"): m
-                    for m in miners
-                    if isinstance(m, dict) and m.get("uid") is not None
-                }
-                scorer = MinerScorer()
-                rewards = []
-                reward_uids = []
+            bt.logging.warning("No miner rewards were computed in this verification cycle")
 
-                for res in results:
-                    miner_record = miners_by_uid.get(res.uid)
-                    if miner_record is None:
-                        fallback_checks = [bool(res.overall_status_passed)]
-                        fallback_times = [res.duration] if res.duration is not None else []
-                        miner_record = {
-                            "uid": res.uid,
-                            "hotkey": res.hotkey,
-                            "last_n_checks": fallback_checks,
-                            "last_n_response_times": fallback_times,
-                        }
-                        if res.error_details:
-                            miner_record["last_error"] = res.error_details
-                        miners_by_uid[res.uid] = miner_record
-                        bt.logging.debug(
-                            f"Miner {res.uid}: gateway history missing, using fallback with current result only."
-                        )
+        latencies = [n.avg_latency_ms for n in miner_nodes if n.avg_latency_ms is not None]
+        latency_stats = LatencyStats.from_latencies(latencies)
+        unique_miners = set(n.miner_hotkey for n in miner_nodes)
 
-                    raw_checks = miner_record.get("last_n_checks", [])
-                    last_checks = [bool(x) for x in raw_checks if isinstance(x, (bool, int))]
-                    if not last_checks and raw_checks:
-                        bt.logging.debug(
-                            f"Miner {res.uid}: ignoring non-boolean last_n_checks values {raw_checks}"
-                        )
-                    raw_times = miner_record.get("last_n_response_times", [])
-                    last_times = [float(t) for t in raw_times if isinstance(t, (int, float))]
-                    if not last_times and raw_times:
-                        bt.logging.debug(
-                            f"Miner {res.uid}: ignoring non-numeric last_n_response_times values {raw_times}"
-                        )
-                    if not last_times and res.duration is not None:
-                        last_times = [float(res.duration)]
+        log_verification_metrics(
+            self.wandb,
+            step=self.step,
+            block=self.block,
+            verified_count=verified_count,
+            failed_count=failed_count,
+            total_nodes=len(miner_nodes),
+            total_miners=len(unique_miners),
+            latency_stats=latency_stats,
+        )
 
-                    score, success_rate, avg_time, speed_score = scorer.score_with_metrics(last_checks, last_times)
-
-                    bt.logging.info(
-                        f"Miner {res.uid}: avg_time={avg_time:.2f}s, "
-                        f"success_rate={success_rate:.2f}, speed_score={speed_score:.2f}, "
-                        f"score={score:.4f}"
-                    )
-
-                    if self.miner_table is not None:
-                        self.miner_table.add_data(
-                            current_tempo,
-                            round_in_tempo,
-                            res.uid,
-                            score,
-                            speed_score,
-                            avg_time,
-                            success_rate,
-                        )
-
-                    rewards.append(score)
-                    reward_uids.append(res.uid)
-                
-                # Log miner metrics once per tempo at the final round
-                if (
-                    self.wandb
-                    and self.miner_table is not None
-                    and round_in_tempo == rounds_per_tempo - 1
-                    and self._last_logged_tempo != current_tempo
-                ):
-                    self.wandb.log({"Miners": self.miner_table}, step=current_block)
-                    # Start a new table for the next tempo
-                    self.miner_table = self.wandb.Table(
-                        columns=[
-                            "tempo",
-                            "round",
-                            "uid",
-                            "score",
-                            "speed_score",
-                            "avg_time",
-                            "success_rate",
-                        ]
-                    )
-                    self._last_logged_tempo = current_tempo
-
-                bt.logging.info(f"Updating scores for uids={reward_uids} with rewards={rewards}")
-                self.update_scores(rewards, reward_uids)
-                bt.logging.info(f"New moving average scores: {self.scores}")
-                
-            except Exception as e:
-                bt.logging.error(f"Failed to fetch or update scores: {e}")
 
 if __name__ == "__main__":
     with Validator() as validator:
