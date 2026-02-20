@@ -1,7 +1,8 @@
 # The MIT License (MIT)
-# Copyright © 2025 UnitOne Labs
+# Copyright © 2026 UnitOne Labs
 
 import requests
+from requests.adapters import HTTPAdapter
 from typing import Optional, Dict, Any, List
 import bittensor as bt
 
@@ -38,6 +39,10 @@ class GatewayClient:
         self.session.headers.update({
             "Content-Type": "application/json",
         })
+        # Match validator concurrency to avoid connection-pool churn warnings under parallel checks.
+        adapter = HTTPAdapter(pool_connections=100, pool_maxsize=100)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
     def _handle_error_response(self, response: requests.Response) -> None:
         """Parse and raise gateway error if response is an error."""

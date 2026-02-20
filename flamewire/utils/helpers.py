@@ -1,5 +1,5 @@
 # The MIT License (MIT)
-# Copyright © 2025 UnitOne Labs
+# Copyright © 2026 UnitOne Labs
 
 import hashlib
 import random
@@ -8,7 +8,7 @@ from typing import Dict, List, TypeVar, Iterator, Tuple, Callable
 
 import bittensor as bt
 
-from flamewire.gateway import Node, MinerNode, CheckStats, StatisticsResponse, ReferenceBlock, SYSTEM_EVENTS_KEY
+from flamewire.gateway import Node, MinerNode, CheckStats, ReferenceBlock, SYSTEM_EVENTS_KEY
 
 T = TypeVar("T")
 
@@ -30,29 +30,24 @@ def batched(items: List[T], batch_size: int) -> Iterator[List[T]]:
 
 def build_miner_nodes(
     nodes_by_hotkey: Dict[str, List[Node]],
-    stats: StatisticsResponse,
 ) -> List[MinerNode]:
     """
-    Build a list of MinerNode objects from nodes and statistics.
+    Build a list of MinerNode objects from gateway node lookup.
 
     Args:
         nodes_by_hotkey: Dict mapping miner hotkey to list of Node objects
-        stats: Statistics response from gateway
 
     Returns:
-        List of MinerNode objects with health stats
+        List of MinerNode objects initialized with empty local health stats
     """
-    stats_by_node = {s.node_id: s.health for s in stats.statistics}
-
     miner_nodes = []
     for hotkey, nodes in nodes_by_hotkey.items():
         for node in nodes:
-            health = stats_by_node.get(node.id, CheckStats(total=0, passed=0))
             miner_nodes.append(MinerNode(
                 miner_hotkey=hotkey,
                 node_id=node.id,
                 region=node.region,
-                health=health,
+                health=CheckStats(total=0, passed=0),
             ))
 
     return miner_nodes
@@ -81,7 +76,8 @@ def verify_node_data(
     node: MinerNode,
     reference_blocks: List[ReferenceBlock],
     rpc_call_fn,
-) -> Tuple[bool, List[int]]:
+    network_head: int,
+) -> Tuple[bool, List[int], int, int]:
     """
     Verify a miner node's data against reference blocks.
 
@@ -91,12 +87,40 @@ def verify_node_data(
         rpc_call_fn: Function to make RPC calls (gateway.rpc_call)
 
     Returns:
-        Tuple of (passed, latencies) where latencies is a list of latency_ms values
+        Tuple of (passed, latencies, health_passed, health_total)
     """
     latencies = []
+    health_passed = 0
+    health_total = 0
+    passed = True
 
     for ref_block in reference_blocks:
+        health_total += 1
         try:
+            # Health check: node must be synced and at network head.
+            health_response = rpc_call_fn(
+                "system_health",
+                node.node_id,
+                node.region,
+                [],
+            )
+            header_response = rpc_call_fn(
+                "chain_getHeader",
+                node.node_id,
+                node.region,
+                [],
+            )
+            if not health_response.is_error() and not header_response.is_error():
+                health_result = health_response.result or {}
+                header_result = header_response.result or {}
+                is_syncing = bool(health_result.get("isSyncing", True))
+                node_head_hex = header_result.get("number")
+                node_head = int(node_head_hex, 16) if isinstance(node_head_hex, str) else None
+                # Compare against the validator snapshot head captured at cycle start.
+                # Nodes can naturally advance beyond that value while checks are running.
+                if (not is_syncing) and (node_head is not None) and (node_head >= network_head):
+                    health_passed += 1
+
             # Get events data from the miner's node
             response = rpc_call_fn(
                 "state_getStorage",
@@ -113,7 +137,8 @@ def verify_node_data(
                 bt.logging.warning(
                     f"Node {node.node_id} RPC error on block {ref_block.block_number}: {response.error.message}"
                 )
-                return False, latencies
+                passed = False
+                continue
 
             # Hash the raw data
             raw_data = response.result or ""
@@ -125,19 +150,20 @@ def verify_node_data(
                     f"Node {node.node_id} hash mismatch on block {ref_block.block_number} "
                     f"({ref_block.verification_type}): expected {ref_block.events_hash[:16]}... got {events_hash[:16]}..."
                 )
-                return False, latencies
+                passed = False
 
         except Exception as e:
             bt.logging.warning(f"Node {node.node_id} verification error: {e}")
-            return False, latencies
+            passed = False
 
-    return True, latencies
+    return passed, latencies, health_passed, health_total
 
 
 def verify_all_nodes(
     miner_nodes: List[MinerNode],
     reference_blocks: List[ReferenceBlock],
     rpc_call_fn: Callable,
+    network_head: int,
     max_workers: int = 32,
 ) -> Tuple[int, int]:
     """
@@ -147,6 +173,7 @@ def verify_all_nodes(
         miner_nodes: List of miner nodes to verify
         reference_blocks: List of reference blocks to check against
         rpc_call_fn: Function to make RPC calls (gateway.rpc_call)
+        network_head: Current chain head from validator reference endpoint
         max_workers: Maximum number of concurrent verifications
 
     Returns:
@@ -158,17 +185,23 @@ def verify_all_nodes(
     verified_count = 0
     failed_count = 0
 
-    def verify_single_node(node: MinerNode) -> Tuple[MinerNode, bool, List[int]]:
-        passed, latencies = verify_node_data(node, reference_blocks, rpc_call_fn)
-        return node, passed, latencies
+    def verify_single_node(node: MinerNode) -> Tuple[MinerNode, bool, List[int], int, int]:
+        passed, latencies, health_passed, health_total = verify_node_data(
+            node,
+            reference_blocks,
+            rpc_call_fn,
+            network_head=network_head,
+        )
+        return node, passed, latencies, health_passed, health_total
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(verify_single_node, node): node for node in miner_nodes}
 
         for future in as_completed(futures):
             try:
-                node, passed, latencies = future.result()
+                node, passed, latencies, health_passed, health_total = future.result()
                 node.data_verified = passed
+                node.health = CheckStats(total=health_total, passed=health_passed)
 
                 # Calculate average latency
                 if latencies:

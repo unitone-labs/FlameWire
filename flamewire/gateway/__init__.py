@@ -1,5 +1,5 @@
 from .client import GatewayClient
-from .rpc import RpcClient, storage_key, SYSTEM_EVENTS_KEY
+from .rpc import RpcClient, SubtensorRpcTransport, storage_key, SYSTEM_EVENTS_KEY
 from .types import (
     GatewayAPIError,
     GatewayError,
@@ -18,6 +18,7 @@ from .types import (
 __all__ = [
     "GatewayClient",
     "RpcClient",
+    "SubtensorRpcTransport",
     "storage_key",
     "SYSTEM_EVENTS_KEY",
     "GatewayAPIError",

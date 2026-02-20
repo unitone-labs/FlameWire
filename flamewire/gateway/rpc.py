@@ -1,5 +1,5 @@
 # The MIT License (MIT)
-# Copyright © 2025 UnitOne Labs
+# Copyright © 2026 UnitOne Labs
 
 import hashlib
 import xxhash
@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 
 import bittensor as bt
 
-from .types import ReferenceBlock
+from .types import ReferenceBlock, RPCError, RPCResponse
 
 
 def twox128(data: bytes) -> bytes:
@@ -15,8 +15,9 @@ def twox128(data: bytes) -> bytes:
     Compute twox128 hash (used for Substrate storage keys).
     twox128 is xxh64(data, seed=0) || xxh64(data, seed=1)
     """
-    h0 = xxhash.xxh64(data, seed=0).digest()
-    h1 = xxhash.xxh64(data, seed=1).digest()
+    # Substrate expects little-endian xxh64 chunks.
+    h0 = xxhash.xxh64(data, seed=0).intdigest().to_bytes(8, "little")
+    h1 = xxhash.xxh64(data, seed=1).intdigest().to_bytes(8, "little")
     return h0 + h1
 
 
@@ -38,6 +39,47 @@ def storage_key(module: str, storage: str) -> str:
 
 # Pre-computed storage key for System::Events
 SYSTEM_EVENTS_KEY = storage_key("System", "Events")
+
+
+class SubtensorRpcTransport:
+    """
+    JSON-RPC transport backed by a validator-controlled subtensor endpoint.
+    """
+
+    def __init__(self, chain_endpoint: str):
+        self.subtensor = bt.Subtensor(network=chain_endpoint)
+
+    def __call__(
+        self,
+        method: str,
+        params: Optional[list] = None,
+        request_id: int = 1,
+    ) -> RPCResponse:
+        try:
+            response = self.subtensor.substrate.rpc_request(method, params or [])
+            error_data = response.get("error")
+            rpc_error = None
+            if error_data:
+                rpc_error = RPCError(
+                    code=error_data.get("code", 0),
+                    message=error_data.get("message", ""),
+                )
+
+            return RPCResponse(
+                jsonrpc=response.get("jsonrpc", "2.0"),
+                id=response.get("id", request_id),
+                result=response.get("result"),
+                error=rpc_error,
+                latency_ms=None,
+            )
+        except Exception as err:
+            return RPCResponse(
+                jsonrpc="2.0",
+                id=request_id,
+                result=None,
+                error=RPCError(code=-1, message=str(err)),
+                latency_ms=None,
+            )
 
 
 class RpcClient:
@@ -107,7 +149,12 @@ class RpcClient:
         Returns:
             Tuple of (data_length, events_hash) where data_length is the raw hex length
         """
-        raw_data = self.get_storage(SYSTEM_EVENTS_KEY, block_hash) or ""
+        raw_data = self.get_storage(SYSTEM_EVENTS_KEY, block_hash)
+        if raw_data is None:
+            raise ValueError(
+                "Missing System::Events at reference block. "
+                "Ensure reference endpoint is archive-capable."
+            )
 
         # Hash the raw hex data directly
         events_hash = hashlib.sha256(raw_data.encode()).hexdigest()

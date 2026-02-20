@@ -1,5 +1,5 @@
 # The MIT License (MIT)
-# Copyright © 2025 UnitOne Labs
+# Copyright © 2026 UnitOne Labs
 
 import datetime
 import os

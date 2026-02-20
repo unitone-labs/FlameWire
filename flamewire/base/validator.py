@@ -1,7 +1,7 @@
 # The MIT License (MIT)
 # Copyright © 2023 Yuma Rao
 # UnitOne Labs: Alexander
-# Copyright © 2025 UnitOne Labs
+# Copyright © 2026 UnitOne Labs
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
 # documentation files (the "Software"), to deal in the Software without restriction, including without limitation
@@ -82,6 +82,12 @@ class BaseValidatorNeuron(BaseNeuron):
         except Exception as e:
             bt.logging.error(f"Error in verify: {e}")
             log_error(self.wandb, "verify_error", str(e), step=self.step)
+
+    def should_set_weights(self) -> bool:
+        """
+        Validators set weights explicitly after each completed verification cycle.
+        """
+        return False
 
     def run(self):
         self.sync()

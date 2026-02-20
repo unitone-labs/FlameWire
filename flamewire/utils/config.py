@@ -1,7 +1,7 @@
 # The MIT License (MIT)
 # Copyright © 2023 Yuma Rao
 # Copyright © 2023 Opentensor Foundation
-# Copyright © 2025 UnitOne Labs
+# Copyright © 2026 UnitOne Labs
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
 # documentation files (the "Software"), to deal in the Software without restriction, including without limitation
@@ -19,24 +19,105 @@
 
 import os
 import argparse
+from pathlib import Path
 import bittensor as bt
 from .logging import setup_events_logger
 
+DEFAULT_GATEWAY_URL = "https://gateway-dev.flamewire.io"
+DEFAULT_VALIDATOR_MAX_WORKERS = 32
+DEFAULT_VALIDATOR_EMA_ALPHA = 0.1
+DEFAULT_VALIDATOR_VERIFICATION_INTERVAL = 480
+
 
 def load_env(env_path: str = ".env"):
-    """Load environment variables from a .env file if it exists."""
-    if not os.path.exists(env_path):
-        return
-    try:
-        with open(env_path) as f:
+    """
+    Load environment variables from a .env file.
+
+    Lookup order:
+    1) Provided absolute path.
+    2) Current working directory.
+    3) Repository root (resolved from this file location).
+    """
+
+    def _load_file(path: Path):
+        with path.open() as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 key, val = line.split("=", 1)
                 os.environ.setdefault(key.strip(), val.strip())
+
+    try:
+        candidate_paths = []
+        env_candidate = Path(env_path)
+
+        if env_candidate.is_absolute():
+            candidate_paths.append(env_candidate)
+        else:
+            candidate_paths.append(Path.cwd() / env_candidate)
+            repo_root = Path(__file__).resolve().parents[2]
+            candidate_paths.append(repo_root / env_candidate)
+
+        seen = set()
+        for path in candidate_paths:
+            resolved = str(path.resolve())
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            if path.exists():
+                _load_file(path)
+                return
     except Exception as e:
         bt.logging.warning(f"Failed to load {env_path}: {e}")
+
+
+def _get_env_int(name: str, default: int) -> int:
+    """Read int env var safely with fallback."""
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return int(default)
+    try:
+        return int(raw)
+    except ValueError:
+        bt.logging.warning(f"Invalid {name}='{raw}', using default {default}")
+        return int(default)
+
+
+def _get_env_float(name: str, default: float) -> float:
+    """Read float env var safely with fallback."""
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return float(default)
+    try:
+        return float(raw)
+    except ValueError:
+        bt.logging.warning(f"Invalid {name}='{raw}', using default {default}")
+        return float(default)
+
+
+def _get_env_str(name: str, default: str) -> str:
+    """Read string env var safely with fallback."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip() or default
+
+
+def _get_env_bool(name: str, default: bool) -> bool:
+    """Read bool env var safely with fallback."""
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return bool(default)
+
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+
+    bt.logging.warning(f"Invalid {name}='{raw}', using default {default}")
+    return bool(default)
 
 
 def check_config(cls, config: "bt.Config"):
@@ -136,7 +217,7 @@ def add_validator_args(cls, parser):
         "--gateway.url",
         type=str,
         help="The gateway API URL.",
-        default="https://gateway-dev.flamewire.io",
+        default=DEFAULT_GATEWAY_URL,
     )
 
     parser.add_argument(
@@ -150,21 +231,28 @@ def add_validator_args(cls, parser):
         "--validator.max_workers",
         type=int,
         help="Maximum number of concurrent workers for node verification.",
-        default=32,
+        default=DEFAULT_VALIDATOR_MAX_WORKERS,
     )
 
     parser.add_argument(
         "--validator.ema_alpha",
         type=float,
         help="EMA smoothing factor (0-1). Higher = faster adaptation, lower = more stable.",
-        default=0.1,
+        default=DEFAULT_VALIDATOR_EMA_ALPHA,
     )
 
     parser.add_argument(
         "--validator.verification_interval",
         type=int,
         help="Interval between verification cycles in seconds.",
-        default=480,
+        default=DEFAULT_VALIDATOR_VERIFICATION_INTERVAL,
+    )
+
+    parser.add_argument(
+        "--validator.reference_rpc_url",
+        type=str,
+        help="Validator-controlled archive RPC endpoint for reference block truth data.",
+        default="",
     )
 
 
@@ -182,6 +270,11 @@ def config(cls):
 
     cfg = bt.Config(parser)
 
+    # Enable visible runtime logs by default. CLI flags are preserved unless env overrides are set.
+    cfg.logging.info = _get_env_bool("LOGGING_INFO", True)
+    cfg.logging.debug = _get_env_bool("LOGGING_DEBUG", bool(getattr(cfg.logging, "debug", False)))
+    cfg.logging.trace = _get_env_bool("LOGGING_TRACE", bool(getattr(cfg.logging, "trace", False)))
+
     # Override settings from environment variables if present
     cfg.wallet.name = os.getenv("WALLET_NAME", cfg.wallet.name)
     cfg.wallet.hotkey = os.getenv("WALLET_HOTKEY", cfg.wallet.hotkey)
@@ -190,13 +283,22 @@ def config(cls):
     # Gateway and validator settings
     if cfg.gateway is None:
         cfg.gateway = bt.Config()
-    cfg.gateway.url = os.getenv("GATEWAY_URL", getattr(cfg.gateway, "url", "https://gateway-dev.flamewire.io"))
+    cfg.gateway.url = _get_env_str("GATEWAY_URL", DEFAULT_GATEWAY_URL)
 
     if cfg.validator is None:
         cfg.validator = bt.Config()
-    cfg.validator.api_key = os.getenv("VALIDATOR_API_KEY", getattr(cfg.validator, "api_key", ""))
-    cfg.validator.max_workers = int(os.getenv("VALIDATOR_MAX_WORKERS", getattr(cfg.validator, "max_workers", 32)))
-    cfg.validator.ema_alpha = float(os.getenv("VALIDATOR_EMA_ALPHA", getattr(cfg.validator, "ema_alpha", 0.1)))
-    cfg.validator.verification_interval = int(os.getenv("VALIDATOR_VERIFICATION_INTERVAL", getattr(cfg.validator, "verification_interval", 480)))
+    cfg.validator.api_key = _get_env_str("VALIDATOR_API_KEY", "")
+    cfg.validator.max_workers = _get_env_int("VALIDATOR_MAX_WORKERS", DEFAULT_VALIDATOR_MAX_WORKERS)
+    cfg.validator.ema_alpha = _get_env_float("VALIDATOR_EMA_ALPHA", DEFAULT_VALIDATOR_EMA_ALPHA)
+    cfg.validator.verification_interval = _get_env_int(
+        "VALIDATOR_VERIFICATION_INTERVAL",
+        DEFAULT_VALIDATOR_VERIFICATION_INTERVAL,
+    )
+    reference_rpc_url = (
+        os.getenv("REFERENCE_RPC_URL")
+        or os.getenv("VALIDATOR_REFERENCE_RPC_URL")
+        or ""
+    )
+    cfg.validator.reference_rpc_url = reference_rpc_url.strip()
 
     return cfg
