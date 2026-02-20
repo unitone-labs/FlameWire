@@ -61,10 +61,11 @@ Coordinates and manages network activity:
 
 ## Economic Model
 
-- **Stake-Based Free-Tier Access**: Users get free access based on staked Alpha Tokens 
-- **Pay-as-you-go**: Developers pay based on resource consumption  
-- **Circular Tokenomics**: Payments are recycled into subnet liquidity  
-- **Performance-Based Rewards**: High-quality service providers earn more  
+- **Free Public Tier**: Every onboarded chain includes a rate-limited public RPC tier to ensure baseline ecosystem access.
+- **Premium Credits Model**: API key–based access with pay-as-you-go credits. Billing is method-tiered and enforces predictable commercial QoS.
+- **Performance-Weighted Emissions**: Miner and validator rewards are distributed in ALPHA based strictly on measurable performance (correctness, uptime, latency).
+- **Chain Weight Allocation**: Economic incentives scale according to foundation commitments, public contributions, and real premium demand signals.
+- **Revenue Recycling Loop**: All premium revenue and commitments are recycled into the ecosystem, with default buyback-and-burn of ALPHA unless governance decides otherwise.
 
 ---
 
