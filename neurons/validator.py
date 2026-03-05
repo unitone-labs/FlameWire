@@ -34,6 +34,42 @@ from flamewire.utils.scoring import calculate_node_scores, calculate_miner_score
 from flamewire.utils.wandb_logging import log_verification_metrics
 
 
+def apply_reward_ema(
+    rewards: np.ndarray,
+    uids: np.ndarray,
+    previous_scores: np.ndarray,
+    ema_alpha: float,
+    ema_initialized_uids: set[int],
+    active_uids: set[int],
+) -> tuple[np.ndarray, set[int]]:
+    """
+    Apply EMA smoothing only for active miners.
+
+    Miners with no active nodes this cycle are zeroed immediately so stale scores
+    do not linger after node wipeouts.
+    """
+    smoothed = rewards.astype(np.float32, copy=True)
+    updated_initialized = set(ema_initialized_uids)
+
+    for idx, uid in enumerate(uids):
+        uid_int = int(uid)
+
+        if uid_int not in active_uids:
+            smoothed[idx] = 0.0
+            updated_initialized.discard(uid_int)
+            continue
+
+        if uid_int in updated_initialized:
+            smoothed[idx] = (
+                ((1.0 - ema_alpha) * float(previous_scores[idx]))
+                + (ema_alpha * float(rewards[idx]))
+            )
+
+        updated_initialized.add(uid_int)
+
+    return smoothed, updated_initialized
+
+
 class Validator(BaseValidatorNeuron):
     def __init__(self, config=None):
         # Local health history measured by this validator only (node_id -> CheckStats).
@@ -139,6 +175,9 @@ class Validator(BaseValidatorNeuron):
 
         # Build MinerNode array with validator-local health placeholders.
         miner_nodes = build_miner_nodes(all_nodes)
+        active_hotkeys = {
+            hotkey for hotkey, nodes in all_nodes.items() if nodes
+        }
 
         # Get current block
         current_block = self.rpc.get_current_block()
@@ -189,12 +228,15 @@ class Validator(BaseValidatorNeuron):
         hotkey_to_uid = {hotkey: uid for uid, hotkey in enumerate(self.metagraph.hotkeys)}
         reward_uids = []
         reward_values = []
+        active_uids = set()
         for hotkey in miner_hotkeys:
             uid = hotkey_to_uid.get(hotkey)
             if uid is None:
                 continue
             reward_uids.append(uid)
             reward_values.append(float(score_by_hotkey.get(hotkey, 0.0)))
+            if hotkey in active_hotkeys:
+                active_uids.add(int(uid))
 
         if reward_uids:
             rewards = np.asarray(reward_values, dtype=np.float32)
@@ -203,21 +245,20 @@ class Validator(BaseValidatorNeuron):
             # EMA smoothing to avoid abrupt weight shifts between verification rounds.
             ema_alpha = float(self.config.validator.ema_alpha)
             previous_scores = self.scores[uids]
-            smoothed_rewards = rewards.copy()
-            for idx, uid in enumerate(uids):
-                uid_int = int(uid)
-                if uid_int in self.ema_initialized_uids:
-                    smoothed_rewards[idx] = (
-                        ((1.0 - ema_alpha) * previous_scores[idx])
-                        + (ema_alpha * rewards[idx])
-                    )
-                else:
-                    smoothed_rewards[idx] = rewards[idx]
+            smoothed_rewards, self.ema_initialized_uids = apply_reward_ema(
+                rewards=rewards,
+                uids=uids,
+                previous_scores=previous_scores,
+                ema_alpha=ema_alpha,
+                ema_initialized_uids=self.ema_initialized_uids,
+                active_uids=active_uids,
+            )
 
             self.update_scores(smoothed_rewards, uids)
-            for uid in uids:
-                self.ema_initialized_uids.add(int(uid))
-            bt.logging.info(f"Updated rewards for {len(reward_uids)} miners (ema_alpha={ema_alpha})")
+            bt.logging.info(
+                f"Updated rewards for {len(reward_uids)} miners "
+                f"(active={len(active_uids)}, zeroed={len(reward_uids) - len(active_uids)}, ema_alpha={ema_alpha})"
+            )
 
             # Set weights immediately after completing a full scoring cycle.
             if not self.config.neuron.disable_set_weights:
