@@ -107,6 +107,11 @@ Prerequisites:
 - Node reachable from the internet
 - A wallet with a registered hotkey on subnet 97
 - `btcli` installed
+- On the node machine, install signing dependencies:
+  ```bash
+  sudo apt install -y libclang-dev clang curl build-essential
+  cargo install subkey --git https://github.com/paritytech/polkadot-sdk
+  ```
 
 Node configuration requirements:
 - Open ports `9944` (WebSocket RPC) and `30333` (P2P)
@@ -118,19 +123,26 @@ Registration steps:
    ```text
    https://app.flamewire.io/login?redirect=%2Fnodes%3Fregister%3Dtrue
    ```
-2. In the registration modal, enter your node URL (example `ws://your_node_ip:9944`).
-3. Sign the registration message with your hotkey:
+2. In the registration modal, enter your node URL (example `ws://your_node_ip:9944`) and your hotkey.
+3. On the node machine, sign the verification message using the node key (not the hotkey):
    ```bash
-   btcli w sign --wallet.name [name] --wallet.hotkey [hotkey] --use-hotkey --message register:[url]
+   echo -n "verify:[hotkey]" | subkey sign \
+     --scheme ed25519 \
+     --suri "0x$(cat /path-to/chains/bittensor/network/secret_ed25519 | xxd -p -c 32)"
    ```
+   Notes:
+   - Replace `[hotkey]` with your SS58 hotkey address (starts with `5`).
+   - Replace `/path-to/chains/bittensor/network/secret_ed25519` with your node's actual key path.
 4. Paste in the modal:
    - `Hotkey`: your SS58 hotkey address (starts with `5`)
-   - `Signature`: output from the `btcli w sign` command
+   - `Signature`: output from the `subkey sign` command
 5. Click `+ Register Node`.
 
 Example sign command:
 ```bash
-btcli w sign --wallet.name my_wallet --wallet.hotkey my_hotkey --use-hotkey --message register:ws://your_node_ip:9944
+echo -n "verify:5ExampleHotkeyAddress" | subkey sign \
+  --scheme ed25519 \
+  --suri "0x$(cat /var/lib/bittensor/chains/bittensor/network/secret_ed25519 | xxd -p -c 32)"
 ```
 
 After registration:
@@ -139,7 +151,7 @@ After registration:
 
 Common issues:
 - Node not reachable: confirm ports `9944` and `30333` are open.
-- Invalid signature: confirm wallet/hotkey names and `--use-hotkey`.
+- Invalid signature: confirm the message is exactly `verify:[hotkey]`, `echo -n` is used, and the node key path is correct.
 - Node not syncing: wait until full sync completes.
 - WebSocket connection failed: confirm `--rpc-methods=unsafe` is enabled.
 
