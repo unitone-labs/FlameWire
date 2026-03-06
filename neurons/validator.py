@@ -175,9 +175,6 @@ class Validator(BaseValidatorNeuron):
 
         # Build MinerNode array with validator-local health placeholders.
         miner_nodes = build_miner_nodes(all_nodes)
-        active_hotkeys = {
-            hotkey for hotkey, nodes in all_nodes.items() if nodes
-        }
 
         # Get current block
         current_block = self.rpc.get_current_block()
@@ -217,6 +214,12 @@ class Validator(BaseValidatorNeuron):
         )
         bt.logging.info(f"Verification complete: {verified_count} passed, {failed_count} failed")
 
+        # Hotkeys with at least one node that passed data verification this cycle.
+        verified_hotkeys = {
+            node.miner_hotkey for node in miner_nodes if node.data_verified
+        }
+        bt.logging.info(f"Miners with verified nodes: {len(verified_hotkeys)}")
+
         # Merge cycle measurements into validator-local uptime history.
         self._merge_local_health(miner_nodes)
 
@@ -235,7 +238,7 @@ class Validator(BaseValidatorNeuron):
                 continue
             reward_uids.append(uid)
             reward_values.append(float(score_by_hotkey.get(hotkey, 0.0)))
-            if hotkey in active_hotkeys:
+            if hotkey in verified_hotkeys:
                 active_uids.add(int(uid))
 
         if reward_uids:
@@ -257,7 +260,7 @@ class Validator(BaseValidatorNeuron):
             self.update_scores(smoothed_rewards, uids)
             bt.logging.info(
                 f"Updated rewards for {len(reward_uids)} miners "
-                f"(active={len(active_uids)}, zeroed={len(reward_uids) - len(active_uids)}, ema_alpha={ema_alpha})"
+                f"(verified={len(active_uids)}, zeroed={len(reward_uids) - len(active_uids)}, ema_alpha={ema_alpha})"
             )
 
             # Set weights immediately after completing a full scoring cycle.
