@@ -50,11 +50,11 @@ class TestScoringModel(unittest.TestCase):
         by_node = {score.node_id: score for score in node_scores}
 
         self.assertAlmostEqual(by_node["a_us"].total, 0.97, places=6)
-        self.assertAlmostEqual(by_node["a_eu"].total, 0.45, places=6)
+        self.assertAlmostEqual(by_node["a_eu"].total, 0.0, places=6)
         self.assertAlmostEqual(by_node["b_us"].total, 0.64, places=6)
         self.assertEqual(by_node["a_eu"].correctness, 0.0)
 
-    def test_incorrect_data_zeroes_correctness_component(self):
+    def test_incorrect_data_zeroes_full_node_score(self):
         nodes = [
             MinerNode(
                 miner_hotkey="miner_a",
@@ -69,7 +69,7 @@ class TestScoringModel(unittest.TestCase):
         node_scores = calculate_node_scores(nodes)
         self.assertEqual(len(node_scores), 1)
         self.assertAlmostEqual(node_scores[0].correctness, 0.0, places=6)
-        self.assertAlmostEqual(node_scores[0].total, 0.6, places=6)
+        self.assertAlmostEqual(node_scores[0].total, 0.0, places=6)
 
     def test_miner_scores_apply_multiplier_diminishing_and_diversity(self):
         node_scores = [

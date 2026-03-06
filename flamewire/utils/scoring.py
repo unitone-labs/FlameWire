@@ -96,6 +96,8 @@ def _compute_latency_scores(miner_nodes: List[MinerNode]) -> List[float]:
 def calculate_node_scores(miner_nodes: List[MinerNode]) -> List[NodeScore]:
     """
     Calculate node scores using weighted correctness, uptime, and latency.
+
+    Correctness is a hard gate: if data verification fails, node score is 0.
     """
     if not miner_nodes:
         return []
@@ -111,11 +113,14 @@ def calculate_node_scores(miner_nodes: List[MinerNode]) -> List[NodeScore]:
     for node, latency_score in zip(miner_nodes, latency_scores):
         correctness_score = 1.0 if node.data_verified else 0.0
         uptime_score = node.health.success_rate()
-        total_score = (
-            normalized_metric_weights["correctness"] * correctness_score
-            + normalized_metric_weights["uptime"] * uptime_score
-            + normalized_metric_weights["latency"] * latency_score
-        )
+        if correctness_score <= 0.0:
+            total_score = 0.0
+        else:
+            total_score = (
+                normalized_metric_weights["correctness"] * correctness_score
+                + normalized_metric_weights["uptime"] * uptime_score
+                + normalized_metric_weights["latency"] * latency_score
+            )
 
         node_scores.append(
             NodeScore(

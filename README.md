@@ -248,6 +248,7 @@ Notes:
   - `latency`: 30% (relative response speed measured by this validator)
 - Correctness is zero-tolerance:
   - Any failed validation check sets correctness to `0` for that node.
+  - If correctness is `0`, the node score is forced to `0`.
 - Miner score uses regional factors:
   - Regional multiplier: `clamp(33.33% / actual_region_share, 0.5, 2.0)`
   - Diminishing returns per miner/region: node `N` contributes `node_score * (1/N)`
